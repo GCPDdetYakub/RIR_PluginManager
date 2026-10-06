@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>RIR_PluginManager</Name>
+    <Assembly>RIR_PluginManager\RIR_PluginManager.dll</Assembly>
+    <AddInId>0c55d2c7-a848-4b93-ac43-325248fae77b</AddInId>
+    <FullClassName>RIR_PluginManager.App</FullClassName>
+    <VendorId>RIRPM</VendorId>
+    <VendorDescription>Selective Grasshopper plugin loading for Rhino.Inside.Revit</VendorDescription>
+  </AddIn>
+</RevitAddIns>
