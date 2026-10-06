@@ -1,13 +1,13 @@
 # RIR_PluginManager
 <img width="1714" height="1354" alt="RIR_PM" src="https://github.com/user-attachments/assets/974b3734-b598-4754-b361-532ef581c241" />
 
-Надстройка для Revit, которая делает работу Grasshopper в **Rhino.Inside** стабильной на **Revit 2027 и Revit 2026.5+** (.NET 10).
+Надстройка для Revit, которая делает работу Grasshopper в **Rhino.Inside** стабильной на **Revit 2025.5, 2026.5 и 2027** (.NET 10).
 
-> **English summary.** Revit add-in for Rhino.Inside on Revit 2027 / 2026.5+ (.NET 10). Restores icons of old Grasshopper plugins stored in the removed `BinaryFormatter` format (this was crashing Revit), preloads the newest version of libraries shared by several plugins, lets you choose which plugins load inside Revit without affecting standalone Rhino, and checks plugins for known .NET 10 issues without loading them.
+> **English summary.** Revit add-in for Rhino.Inside on Revit 2025.5 / 2026.5 / 2027 (.NET 10). Restores icons of old Grasshopper plugins stored in the removed `BinaryFormatter` format (this was crashing Revit), preloads the newest version of libraries shared by several plugins, lets you choose which plugins load inside Revit without affecting standalone Rhino, and checks plugins for known .NET 10 issues without loading them.
 
 ## Зачем это нужно
 
-Revit 2027 и Revit 2026 начиная с обновления 2026.5 работают на .NET 10. Rhino.Inside запускает Rhino и Grasshopper внутри процесса Revit, поэтому плагины Grasshopper тоже работают на .NET 10. Отдельно запущенный Rhino 8 при этом работает на .NET 8. Отсюда типичный симптом: в обычном Rhino всё работает, а Grasshopper в Revit падает или часть плагинов не загружается.
+Revit 2027, а также Revit 2025 и Revit 2026 начиная с обновлений 2025.5 и 2026.5 работают на .NET 10. Rhino.Inside запускает Rhino и Grasshopper внутри процесса Revit, поэтому плагины Grasshopper тоже работают на .NET 10. Отдельно запущенный Rhino 8 при этом работает на .NET 8. Отсюда типичный симптом: в обычном Rhino всё работает, а Grasshopper в Revit падает или часть плагинов не загружается.
 
 Основные причины:
 
@@ -28,14 +28,16 @@ Revit 2027 и Revit 2026 начиная с обновления 2026.5 рабо�
 
 ## Требования
 
-- Revit 2027 или Revit 2026.5 и новее
+- Revit 2025.5, Revit 2026.5 или Revit 2027 (и их более поздние обновления)
 - Rhino 8 (8.32 или новее) и Rhino.Inside.Revit 1.35 или новее
 - Windows x64
+
+Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не поддерживаются: их поддержка в работе.
 
 ## Установка из готового архива
 
 1. Закройте Revit.
-2. На странице [Releases](../../releases) скачайте архив для своей версии Revit: `RIR_PluginManager-<версия>-Revit2027.zip` или `…-Revit2026.zip`.
+2. На странице [Releases](../../releases) скачайте архив для своей версии Revit: `RIR_PluginManager-<версия>-Revit2025.zip`, `…-Revit2026.zip` или `…-Revit2027.zip`. Архив должен совпадать с годом вашего Revit: сборки для разных версий Revit не взаимозаменяемы.
 3. Распакуйте его в папку `%APPDATA%\Autodesk\Revit\Addins\<версия Revit>\` (путь можно вставить в адресную строку Проводника). Должно получиться так:
 
    ```
@@ -57,7 +59,8 @@ Revit 2027 и Revit 2026 начиная с обновления 2026.5 рабо�
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\install.ps1                      # Revit 2027
-   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2026   # Revit 2026.5+
+   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2026   # Revit 2026.5
+   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2025   # Revit 2025.5
    ```
 
    Если Revit установлен не в стандартную папку, добавьте `-RevitDir "D:\Autodesk\Revit 2027"`.
@@ -144,7 +147,8 @@ Revit 2027 и Revit 2026 начиная с обновления 2026.5 рабо�
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\uninstall.ps1                      # Revit 2027
-powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RevitVersion 2026
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RevitVersion 2026   # Revit 2026.5
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RevitVersion 2025   # Revit 2025.5
 ```
 
 Скрипт вернёт имена отключённым плагинам и удалит надстройку вместе с профилем и логами. При установке из архива достаточно удалить `RIR_PluginManager.addin` и папку `RIR_PluginManager` (сначала запустите `restore.ps1` или закройте Revit штатно).
@@ -154,3 +158,4 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RevitVersion 2026
 Распространяется по лицензии MIT. Использует [Harmony](https://github.com/pardeike/Harmony) (MIT).
 
 Проект экспериментальный и не связан с Robert McNeel & Associates или Autodesk. Rhino, Grasshopper и Rhino.Inside — товарные знаки Robert McNeel & Associates; Revit — товарный знак Autodesk.
+
