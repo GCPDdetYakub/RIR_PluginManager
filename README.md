@@ -1,5 +1,5 @@
 # RIR_PluginManager
-![Uploading image.png…]()
+<img width="1714" height="1354" alt="RIR_PM" src="https://github.com/user-attachments/assets/974b3734-b598-4754-b361-532ef581c241" />
 
 Надстройка для Revit, которая делает работу Grasshopper в **Rhino.Inside** стабильной на **Revit 2027 и Revit 2026.5+** (.NET 10).
 
