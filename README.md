@@ -1,6 +1,5 @@
 # RIR_PluginManager
-![Uploading 2026-10-07 15-26-44.gif…]()
-
+https://github.com/user-attachments/assets/0447a809-a14f-4a10-8b5d-6642ff2adf6e
 
 **RIR_PluginManager** — надстройка для Revit, которая помогает Grasshopper стабильно работать внутри **Rhino.Inside.Revit**. Она решает частую проблему: в обычном Rhino все плагины Grasshopper работают, а в Revit Grasshopper падает вместе с Revit или часть плагинов не загружается. Надстройка устраняет известные причины таких сбоев, позволяет выбрать, какие плагины загружать в Revit, и заранее, без загрузки, показывает, какие плагины в этой версии Revit работать не будут.
 
