@@ -19,7 +19,7 @@ namespace RIR_PluginManager
                 {
                     var profile = PluginStore.LoadProfile();
                     var errors = PluginStore.Apply(profile, out int moved);
-                    PluginStore.Log($"Quick: профиль применён, отключено файлов: {moved}");
+                    PluginStore.Log($"Quick: профиль «{profile.Name}» применён, отключено файлов: {moved}");
                     SharedLibPreloader.Run("кнопка Grasshopper (профиль)");
                     foreach (var e in errors) PluginStore.Log("Quick: " + e);
                 }

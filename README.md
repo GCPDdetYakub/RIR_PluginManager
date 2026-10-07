@@ -1,19 +1,20 @@
-# Rhino.Inside.Revit_PluginManager
-<img width="1714" height="1354" alt="RIR_PM" src="https://github.com/user-attachments/assets/974b3734-b598-4754-b361-532ef581c241" />
+# RIR_PluginManager
 
-Надстройка для Revit, которая делает работу Grasshopper в **Rhino.Inside** стабильной на **Revit 2025.5, 2026.5 и 2027** (.NET 10).
+Надстройка для Revit, которая делает работу Grasshopper в **Rhino.Inside** стабильной на **Revit 2021–2027** с **Rhino 7, 8 и 9**.
 
-> **English summary.** Revit add-in for Rhino.Inside on Revit 2025.5 / 2026.5 / 2027 (.NET 10). Restores icons of old Grasshopper plugins stored in the removed `BinaryFormatter` format (this was crashing Revit), preloads the newest version of libraries shared by several plugins, lets you choose which plugins load inside Revit without affecting standalone Rhino, and checks plugins for known .NET 10 issues without loading them.
+> **English summary.** Revit add-in for Rhino.Inside on Revit 2021–2027 (.NET Framework 4.8 and .NET 10) with Rhino 7/8/9. Restores icons of old Grasshopper plugins stored in the removed `BinaryFormatter` format (this was crashing Revit), preloads the newest version of libraries shared by several plugins, lets you choose which plugins load inside Revit without affecting standalone Rhino, and checks plugins for known runtime issues (wrong target runtime, wrong Rhino version, .NET 10 incompatibilities) without loading them.
 
 ## Зачем это нужно
 
-Revit 2027, а также Revit 2025 и Revit 2026 начиная с обновлений 2025.5 и 2026.5 работают на .NET 10. Rhino.Inside запускает Rhino и Grasshopper внутри процесса Revit, поэтому плагины Grasshopper тоже работают на .NET 10. Отдельно запущенный Rhino 8 при этом работает на .NET 8. Отсюда типичный симптом: в обычном Rhino всё работает, а Grasshopper в Revit падает или часть плагинов не загружается.
+Revit 2027, а также Revit 2025 и Revit 2026 начиная с обновлений 2025.5 и 2026.5 работают на .NET 10 (до этих обновлений — на .NET 8). Rhino.Inside запускает Rhino и Grasshopper внутри процесса Revit, поэтому плагины Grasshopper тоже работают на .NET 10. Отдельно запущенный Rhino 8 при этом работает на .NET 8. Отсюда типичный симптом: в обычном Rhino всё работает, а Grasshopper в Revit падает или часть плагинов не загружается.
 
 Основные причины:
 
 1. **Иконки старых плагинов.** Многие плагины хранят иконки в формате, который читается только через `BinaryFormatter`, а в .NET 9+ его удалили. Ошибки при чтении иконок могут аварийно завершать Revit.
 2. **Конфликты версий общих библиотек.** Если несколько плагинов привозят одну библиотеку в разных версиях, загружается только одна. Плагины, которым нужна более новая, не загружаются, причём результат зависит от порядка загрузки.
 3. **Несовместимые плагины.** Старые Python-компоненты (`.ghpy`, IronPython 2.7) и код, использующий `BinaryFormatter` для своих данных, на .NET 10 не работают.
+
+В **Revit 2021–2024** ситуация обратная: они работают на .NET Framework 4.8, и Rhino 8 внутри них тоже работает на .NET Framework. Плагины, собранные только под .NET 7/8, там не загружаются, а если выполняют код при открытии Grasshopper, могут уронить Revit. Плагины для более новой версии Rhino (например, для Rhino 8 в Rhino 7) тоже не загружаются.
 
 ## Что делает надстройка
 
@@ -28,16 +29,23 @@ Revit 2027, а также Revit 2025 и Revit 2026 начиная с обнов�
 
 ## Требования
 
-- Revit 2025.5, Revit 2026.5 или Revit 2027 (и их более поздние обновления)
-- Rhino 8 (8.32 или новее) и Rhino.Inside.Revit 1.35 или новее
+| Revit | Рантайм | Rhino в Rhino.Inside |
+|---|---|---|
+| 2021, 2022, 2023, 2024 | .NET Framework 4.8 | Rhino 7, Rhino 8 |
+| 2025.0–2025.4, 2026.0–2026.4 | .NET 8 | Rhino 8, Rhino 9 |
+| 2025.5+, 2026.5+, 2027 | .NET 10 | Rhino 8, Rhino 9 |
+
+Сборка надстройки должна соответствовать рантайму вашего Revit: после обновления 2025.4 → 2025.5 (или 2026.4 → 2026.5) надстройку нужно переустановить.
+
+- Rhino.Inside.Revit 1.35 или новее
 - Windows x64
 
-Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не поддерживаются: их поддержка в работе.
+Версию Rhino надстройка определяет сама: по Rhino, выбранному в окне Rhino.Inside при запуске Revit. Проверено на Revit 2021, 2022 (Rhino 7 и 8), 2025.5 и 2027 (Rhino 8); остальные сочетания проверяются.
 
 ## Установка из готового архива
 
 1. Закройте Revit.
-2. На странице [Releases](../../releases) скачайте архив для своей версии Revit: `RIR_PluginManager-<версия>-Revit2025.zip`, `…-Revit2026.zip` или `…-Revit2027.zip`. Архив должен совпадать с годом вашего Revit: сборки для разных версий Revit не взаимозаменяемы.
+2. На странице [Releases](../../releases) скачайте архив для своей версии Revit: `RIR_PluginManager-<версия>-Revit<год>.zip` (2021 … 2027); для Revit 2025 и 2026 — с пометкой `net8` (обновления до x.4) или `net10` (x.5 и новее). Архив должен совпадать с годом вашего Revit: сборки для разных версий Revit не взаимозаменяемы.
 3. Распакуйте его в папку `%APPDATA%\Autodesk\Revit\Addins\<версия Revit>\` (путь можно вставить в адресную строку Проводника). Должно получиться так:
 
    ```
@@ -45,8 +53,10 @@ Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не под
    ├── RIR_PluginManager.addin
    └── RIR_PluginManager\
        ├── RIR_PluginManager.dll
-       └── 0Harmony.dll
+       └── … остальные DLL из архива
    ```
+
+   Набор DLL зависит от рантайма: `0Harmony.dll` (.NET 8/10), `System.Formats.Nrbf.dll` (.NET 8), `System.Reflection.Metadata.dll` и `System.Collections.Immutable.dll` (.NET Framework). Копируйте всё содержимое архива.
 
 4. Запустите Revit. На вопрос о неподписанной надстройке ответьте **«Всегда загружать»**.
 
@@ -61,11 +71,34 @@ Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не под
    powershell -ExecutionPolicy Bypass -File .\install.ps1                      # Revit 2027
    powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2026   # Revit 2026.5
    powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2025   # Revit 2025.5
+   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2024   # Revit 2024 (так же 2023, 2022, 2021)
    ```
 
    Если Revit установлен не в стандартную папку, добавьте `-RevitDir "D:\Autodesk\Revit 2027"`.
 
-Скрипт соберёт проект (`bin\Release<версия>\`) и установит его в `%APPDATA%\Autodesk\Revit\Addins\<версия>\`. Первая сборка скачивает с nuget.org пакет `Lib.Harmony`. Сборки Revit API берутся из установленного Revit и в репозиторий не входят.
+Скрипт соберёт проект (`bin\Release<версия>\`) и установит его в `%APPDATA%\Autodesk\Revit\Addins\<версия>\`. Рантайм выбирается автоматически по `-RevitVersion` и версии установленного `RevitAPI.dll`: .NET Framework 4.8 для Revit 2021–2024, .NET 8 для Revit 2025/2026 до обновления x.4 включительно, .NET 10 для 2025.5+, 2026.5+ и 2027. Выбор можно задать вручную: `-DotNet 48`, `-DotNet 8` или `-DotNet 10`. Первая сборка скачивает с nuget.org пакеты `Lib.Harmony` (.NET 8/10), `System.Formats.Nrbf` (.NET 8) или `System.Reflection.Metadata` (.NET Framework). Сборки Revit API берутся из установленного Revit и в репозиторий не входят.
+
+### Сборка без установки
+
+Чтобы только собрать DLL в отдельную папку (например, для архивов релиза), вызовите `dotnet build` напрямую. Рантайм задаётся параметром `RevitDotNet` (`48`, `8` или `10`):
+
+```powershell
+dotnet build .\RIR_PluginManager.csproj -c Release -p:RevitVersion=2024 -p:RevitDotNet=48 -o bin\2024
+dotnet build .\RIR_PluginManager.csproj -c Release -p:RevitVersion=2027 -p:RevitDotNet=10 -o bin\2027
+```
+
+`RevitAPI.dll` и `RevitAPIUI.dll` берутся из `C:\Program Files\Autodesk\Revit <год>`; другую папку можно указать параметром `-p:RevitDir="путь"`.
+
+### Сборка под .NET 8 без установленного Revit 2025.0–2025.4 / 2026.0–2026.4
+
+Для компиляции достаточно справочных сборок Revit API. Их можно взять из пакетов NuGet [Nice3point.Revit.Api.RevitAPI](https://www.nuget.org/packages/Nice3point.Revit.Api.RevitAPI) и [Nice3point.Revit.Api.RevitAPIUI](https://www.nuget.org/packages/Nice3point.Revit.Api.RevitAPIUI) версий `2025.4.x` / `2026.4.x` (пакет `.nupkg` — это zip-архив; нужные DLL лежат внутри), сложить в папку и передать её в `RevitDir`:
+
+```powershell
+dotnet build .\RIR_PluginManager.csproj -c Release -p:RevitVersion=2025 -p:RevitDotNet=8 -p:RevitDir="C:\Tools\RevitAPI\2025-net8" -o bin\2025-net8
+dotnet build .\RIR_PluginManager.csproj -c Release -p:RevitVersion=2026 -p:RevitDotNet=8 -p:RevitDir="C:\Tools\RevitAPI\2026-net8" -o bin\2026-net8
+```
+
+Эти DLL нужны только для компиляции: в вывод сборки они не копируются, и класть их в репозиторий или архивы нельзя.
 
 ## Как пользоваться
 
@@ -88,12 +121,18 @@ Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не под
 
 Как работает отключение: перед загрузкой Grasshopper файлы `.gha` и `.ghpy` выбранных плагинов временно переименовываются в `*.off`, а сразу после загрузки (или при закрытии Revit) получают исходные имена обратно. Если Revit упал, имена вернутся при следующем запуске; без запуска Revit — скриптом `restore.ps1`.
 
+### Профили
+
+Профиль — именованный набор отключённых плагинов. У каждой версии Rhino свои профили. В нижней части окна можно выбрать профиль, создать новый (в него попадут текущие отметки), переименовать или удалить его. Последний профиль удалить нельзя.
+
+Выбор профиля в списке сразу показывает его отметки. Если отметки текущего профиля были изменены, надстройка предложит сохранить их перед переключением. Активным профиль становится после «Применить»: именно его используют кнопка «Grasshopper (профиль)» и автоматическое применение при запуске Rhino.
+
 ### Настройки
 
 | Настройка | По умолчанию | Описание |
 |---|---|---|
-| Применять профиль автоматически при запуске Revit | выкл. | Отключение выбранных плагинов без открытия окна |
-| Восстанавливать иконки старых плагинов | вкл. | Действует после перезапуска Revit |
+| Применять профиль автоматически при запуске Rhino | выкл. | Отключение плагинов активного профиля без открытия окна; профиль берётся для запущенной версии Rhino |
+| Восстанавливать иконки старых плагинов | вкл. | Только Revit 2025.5+; действует после перезапуска Revit |
 | Заранее загружать новейшие версии общих библиотек | вкл. | Действует со следующего запуска Rhino |
 
 ## Проверка плагинов
@@ -102,12 +141,14 @@ Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не под
 
 | Значок | Значение | Примеры причин |
 |---|---|---|
-| ✖ | не загрузится | Python-компоненты `.ghpy` (IronPython 2.7) |
-| ⚠ | возможны проблемы | код плагина использует `BinaryFormatter`; ресурсы старого формата, которые нельзя восстановить; зависимость от IronPython; плагину нужна более новая версия библиотеки, чем уже загружена в Revit; при предзагрузке у библиотек разный основной номер версии; плагин установлен дважды |
-| ℹ | к сведению | плагин собран под .NET Framework 4.x; будет использоваться версия общей библиотеки из другого плагина |
+| ✖ | не загрузится | плагин собран под более новый рантайм, чем у Revit (например, .NET 7/8 в Revit 2021–2024); плагин собран для более новой версии Rhino, чем выбрана в Rhino.Inside; Python-компоненты `.ghpy` на .NET 10 |
+| ⚠ | возможны проблемы | библиотека плагина собрана под более новый рантайм, чем у Revit; код плагина использует `BinaryFormatter` (.NET 10); ресурсы старого формата, которые нельзя восстановить; зависимость от IronPython; плагину нужна более новая версия библиотеки, чем уже загружена в Revit; при предзагрузке у библиотек разный основной номер версии; плагин установлен дважды |
+| ℹ | к сведению | плагин собран под .NET Framework 4.x (на .NET 10); будет использоваться версия общей библиотеки из другого плагина |
 | ✔ | замечаний нет | — |
 
-Это подсказка по известным причинам проблем на .NET 10, а не гарантия: плагин без замечаний может не работать, а плагин с ⚠ может работать нормально.
+Критерии зависят от сеанса: в Revit 2021–2024 не проверяется то, что работает на .NET Framework (`BinaryFormatter`, IronPython). Если пакет содержит сборки под несколько рантаймов (папки `net48`, `net7.0`…), учитывается только та, которую загрузит Rhino. Библиотеки отдельных программ, которые плагин запускает как отдельный процесс (папки с собственным `.exe`), не учитываются.
+
+Это подсказка по известным причинам проблем, а не гарантия: плагин без замечаний может не работать, а плагин с ⚠ может работать нормально.
 
 ## Восстановление иконок
 
@@ -119,23 +160,25 @@ Revit 2021–2024 (.NET Framework 4.8) и Rhino 7 / Rhino 9 пока не под
 
 В одном процессе .NET может быть только одна версия библиотеки с данным именем, и плагину подходит уже загруженная версия, только если она не старше нужной. Сразу после запуска Rhino (до загрузки плагинов Grasshopper) надстройка находит библиотеки, которые несколько включённых плагинов привозят в разных версиях, и заранее загружает самую новую копию. Системные библиотеки .NET и всё, что уже загружено в Revit, не затрагиваются.
 
-Если плагин окажется несовместим с более новой версией библиотеки, её можно исключить строкой `preload_exclude=ИмяБиблиотеки` в профиле или выключить функцию целиком.
+Если плагин окажется несовместим с более новой версией библиотеки, её можно исключить строкой `preload_exclude=ИмяБиблиотеки` в `settings-revit<год>.txt` или выключить функцию целиком.
 
 ## Файлы надстройки
 
-Все файлы лежат рядом с DLL: `%APPDATA%\Autodesk\Revit\Addins\<версия>\RIR_PluginManager\` (кнопка «Папка профиля» в окне).
+Все файлы лежат рядом с DLL: `%APPDATA%\Autodesk\Revit\Addins\<версия>\RIR_PluginManager\` (кнопка «Папка надстройки» в окне).
 
 | Файл | Назначение |
 |---|---|
-| `profile-revit<версия>.txt` | Профиль: отключённые плагины (`disabled=`), настройки (`autoapply`, `iconfix`, `preloadshared`), исключения (`preload_exclude=`). Можно редактировать вручную. |
+| `settings-revit<год>.txt` | Настройки: `autoapply`, `iconfix`, `preloadshared`, исключения `preload_exclude=`, активный профиль каждой версии Rhino `profile_rhino<версия>=Имя`. |
+| `profiles\rhino<версия>\<имя>.txt` | Профили: отключённые плагины (`disabled=`). Профили прежних версий надстройки (`profile-revit<год>-rhino<версия>.txt` и единый `profile-revit<год>.txt`) при первом запуске переносятся в профиль «Основной». Если для версии Rhino профилей нет, они копируются из папки надстройки другой версии Revit, иначе создаётся пустой «Основной». |
 | `renamed.txt` | Файлы, которые сейчас переименованы. Используется для восстановления. |
 | `folders.txt` | Необязательно. Дополнительные папки с плагинами, по одной на строку. |
 | `logs\log_<дата>_<время>.txt` | Лог каждого запуска Revit; хранятся 5 последних. |
 
-Сканируются папки `%APPDATA%\Grasshopper\Libraries`, `%APPDATA%\McNeel\Rhinoceros\packages\8.0` и папки из `folders.txt`.
+Сканируются папки `%APPDATA%\Grasshopper\Libraries` (общая для всех версий Rhino), `%APPDATA%\McNeel\Rhinoceros\packages\<версия Rhino>.0` и папки из `folders.txt`.
 
 ## Ограничения
 
+- Плагины, собранные только под .NET 7/8, в Revit 2021–2024 работать не будут; используйте их версии под .NET Framework или Rhino 7, если авторы их выпускают.
 - Плагины, несовместимые с .NET 10 (старые Python-компоненты, `BinaryFormatter` в данных), внутри Revit работать не будут. Надстройка позволяет их не загружать. Чтобы пользоваться ими вместе с Revit, их нужно выполнять в отдельном процессе Rhino (например, через Hops / Rhino.Compute).
 - User Objects (`.ghuser`) пока не отключаются вместе с плагином.
 - Если одновременно открыто несколько экземпляров Revit, первый закрытый вернёт имена файлов для всех.
@@ -151,11 +194,10 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RevitVersion 2026   # 
 powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RevitVersion 2025   # Revit 2025.5
 ```
 
-Скрипт вернёт имена отключённым плагинам и удалит надстройку вместе с профилем и логами. При установке из архива достаточно удалить `RIR_PluginManager.addin` и папку `RIR_PluginManager` (сначала запустите `restore.ps1` или закройте Revit штатно).
+Скрипт вернёт имена отключённым плагинам и удалит надстройку вместе с настройками, профилями и логами. При установке из архива достаточно удалить `RIR_PluginManager.addin` и папку `RIR_PluginManager` (сначала запустите `restore.ps1` или закройте Revit штатно).
 
 ## Лицензия и сторонние компоненты
 
-Распространяется по лицензии MIT. Использует [Harmony](https://github.com/pardeike/Harmony) (MIT).
+Распространяется по лицензии MIT. Использует [Harmony](https://github.com/pardeike/Harmony) (MIT), а также пакеты .NET `System.Formats.Nrbf`, `System.Reflection.Metadata` и `System.Collections.Immutable` (MIT, .NET Foundation).
 
 Проект экспериментальный и не связан с Robert McNeel & Associates или Autodesk. Rhino, Grasshopper и Rhino.Inside — товарные знаки Robert McNeel & Associates; Revit — товарный знак Autodesk.
-

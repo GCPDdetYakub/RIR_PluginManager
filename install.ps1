@@ -1,13 +1,17 @@
 # Builds RIR_PluginManager and installs it for the current user.
 # Run with the target Revit closed:
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1                      # Revit 2027
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2026   # Revit 2026.5+
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2026   # Revit 2026 (any update)
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2025   # Revit 2025 (any update)
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2024   # Revit 2021-2024 (.NET Framework 4.8)
 # If Revit is installed elsewhere, add: -RevitDir "D:\Autodesk\Revit 2027"
-# The first build needs access to nuget.org (package Lib.Harmony).
+# The first build needs access to nuget.org (Lib.Harmony and System.Formats.Nrbf for .NET 8/10,
+# System.Reflection.Metadata for .NET Framework 4.8).
 
 param(
     [string]$RevitVersion = "2027",
-    [string]$RevitDir = ""
+    [string]$RevitDir = "",
+    [string]$DotNet = ""          # override: 48, 8 or 10
 )
 $ErrorActionPreference = "Stop"
 
@@ -20,9 +24,21 @@ if (-not (Test-Path (Join-Path $RevitDir "RevitAPI.dll"))) {
     throw "RevitAPI.dll not found in '$RevitDir'. Pass the correct folder with -RevitDir."
 }
 
+# Runtime of this Revit: 2021-2024 -> .NET Framework 4.8; 2025/2026 up to x.4 -> .NET 8; 2025.5+/2026.5+/2027 -> .NET 10.
+# Determined from the file version of RevitAPI.dll (for example 25.4.x.x or 26.5.x.x).
+$apiVersion = $null
+try { $apiVersion = [version](Get-Item (Join-Path $RevitDir "RevitAPI.dll")).VersionInfo.FileVersion.Split(' ')[0] } catch { }
+$year = [int]$RevitVersion
+if ($DotNet) { $dotnet = $DotNet }
+elseif ($year -lt 2025) { $dotnet = "48" }
+elseif ($year -ge 2027) { $dotnet = "10" }
+elseif ($apiVersion -and $apiVersion.Minor -lt 5) { $dotnet = "8" }
+else { $dotnet = "10" }
+Write-Host "Revit $RevitVersion (RevitAPI $apiVersion) -> target runtime: $(if ($dotnet -eq '48') {'.NET Framework 4.8'} else {".NET $dotnet"})"
+
 $proj = Join-Path $PSScriptRoot "RIR_PluginManager.csproj"
 $out  = Join-Path $PSScriptRoot "bin\Release$RevitVersion"
-dotnet build $proj -c Release "-p:RevitDir=$RevitDir" -o $out
+dotnet build $proj -c Release "-p:RevitVersion=$RevitVersion" "-p:RevitDotNet=$dotnet" "-p:RevitDir=$RevitDir" -o $out
 if ($LASTEXITCODE -ne 0) { throw "Build failed, see messages above." }
 
 $addins = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$RevitVersion"

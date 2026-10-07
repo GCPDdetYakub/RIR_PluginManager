@@ -1,8 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Revit 2027 и Revit 2026.5+ работают на .NET 10 -->
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Версия Revit, под которую собирается надстройка: dotnet build -p:RevitVersion=2024 -->
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2027</RevitVersion>
+    <!-- Папка установки Revit (из неё берутся RevitAPI.dll и RevitAPIUI.dll) -->
+    <RevitDir Condition="'$(RevitDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitDir>
+
+    <!-- Рантайм Revit:
+         2021–2024                         .NET Framework 4.8
+         2025.0–2025.4, 2026.0–2026.4      .NET 8
+         2025.5+, 2026.5+, 2027            .NET 10
+         install.ps1 определяет его по версии RevitAPI.dll и передаёт -p:RevitDotNet=48|8|10 -->
+    <RevitDotNet Condition="'$(RevitDotNet)' == '' And $(RevitVersion) &lt; 2025">48</RevitDotNet>
+    <RevitDotNet Condition="'$(RevitDotNet)' == ''">10</RevitDotNet>
+    <TargetFramework Condition="'$(RevitDotNet)' == '48'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitDotNet)' == '8'">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(RevitDotNet)' == '10'">net10.0-windows</TargetFramework>
+
     <UseWPF>true</UseWPF>
     <!-- Нужен для System.Drawing (Bitmap, Icon) в восстановлении иконок -->
     <UseWindowsForms>true</UseWindowsForms>
@@ -11,16 +25,15 @@
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
     <AssemblyName>RIR_PluginManager</AssemblyName>
-    <Version>1.15.0</Version>
+    <Version>1.17.0</Version>
     <RootNamespace>RIR_PluginManager</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Промежуточные файлы отдельно для каждой версии Revit, чтобы сборки не мешали друг другу -->
+    <IntermediateOutputPath>obj\$(Configuration)\Revit$(RevitVersion)-net$(RevitDotNet)\</IntermediateOutputPath>
     <GenerateDependencyFile>false</GenerateDependencyFile>
-    <!-- Копировать DLL пакетов NuGet (Harmony) рядом с надстройкой -->
+    <!-- Копировать DLL пакетов NuGet рядом с надстройкой -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
-
-    <!-- Папка установки Revit; для другой версии: dotnet build -p:RevitDir="C:\Program Files\Autodesk\Revit 2026" -->
-    <RevitDir Condition="'$(RevitDir)' == ''">C:\Program Files\Autodesk\Revit 2027</RevitDir>
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277;NU1510</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,9 +48,25 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Перехват ResourceManager.GetObject для восстановления иконок -->
+  <!-- .NET 8 / .NET 10: перехват ResourceManager.GetObject для восстановления иконок -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net48'">
     <PackageReference Include="Lib.Harmony" Version="2.*" />
+  </ItemGroup>
+
+  <!-- .NET 8: пакет System.Formats.Nrbf 9.0 помечает свой API как экспериментальный (SYSLIB5005);
+       в .NET 10 тот же API входит в рантайм без этой пометки -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <NoWarn>$(NoWarn);SYSLIB5005</NoWarn>
+  </PropertyGroup>
+
+  <!-- .NET 8: System.Formats.Nrbf ещё не входит в рантайм (в .NET 10 — входит) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <PackageReference Include="System.Formats.Nrbf" Version="9.0.*" />
+  </ItemGroup>
+
+  <!-- .NET Framework 4.8: чтение метаданных сборок (в .NET 8/10 входит в рантайм) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="System.Reflection.Metadata" Version="1.6.0" />
   </ItemGroup>
 
 </Project>

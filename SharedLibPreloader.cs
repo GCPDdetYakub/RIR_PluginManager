@@ -48,7 +48,11 @@ namespace RIR_PluginManager
             foreach (var g in groups)
             {
                 if (disabledKeys != null && disabledKeys.Contains(g.Key)) continue;
-                foreach (var dll in PluginChecker.GroupDlls(g)) Add(dll, g.Key, g.Name);
+                // Плагин, который не загрузится в этом сеансе (рантайм или версия Rhino), не должен
+                // навязывать свои версии библиотек остальным
+                if (PluginChecker.IsIncompatibleGroup(g)) continue;
+                foreach (var dll in PluginChecker.GroupDlls(g))
+                    if (!PluginChecker.IsIncompatibleAssembly(dll)) Add(dll, g.Key, g.Name);   // без папок другого рантайма
             }
             foreach (var dll in PluginStore.RootLibraryDlls()) Add(dll, "", "Libraries (корень)");
 
@@ -59,6 +63,12 @@ namespace RIR_PluginManager
                 var list = kv.Value;
                 if (exclude != null && exclude.Contains(name)) continue;
                 if (PluginChecker.IsFrameworkAssembly(name)) continue;      // системные сборки даёт сам рантайм
+                // .NET Framework: версии системных библиотек и библиотек Microsoft задаёт Revit.exe.config
+                // (binding redirects), загружать их копии заранее нельзя
+                if (Session.IsNetFramework &&
+                    (name.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
+                     name.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) ||
+                     name.Equals("netstandard", StringComparison.OrdinalIgnoreCase))) continue;
                 if (loaded != null && loaded.ContainsKey(name)) continue;   // уже загружена (Revit, Rhino, надстройки)
 
                 var owners = list.Select(c => c.ownerKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -105,36 +115,6 @@ namespace RIR_PluginManager
             try { return File.GetLastWriteTimeUtc(path); } catch { return DateTime.MinValue; }
         }
 
-        /// Подписка: предзагрузка выполнится сразу после загрузки RhinoCommon,
-        /// то есть после запуска Rhino и до того, как Grasshopper начнёт загружать плагины.
-        public static void Arm()
-        {
-            bool rhinoLoaded = AppDomain.CurrentDomain.GetAssemblies()
-                .Any(a => { try { return a.GetName().Name == "RhinoCommon"; } catch { return false; } });
-            if (rhinoLoaded)
-            {
-                Run("Rhino уже загружен");
-                return;
-            }
-            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
-            PluginStore.Log("Предзагрузка общих библиотек: ожидание запуска Rhino");
-        }
-
-        static void OnAssemblyLoad(object sender, AssemblyLoadEventArgs args)
-        {
-            try
-            {
-                if (_done) return;
-                if (!string.Equals(args.LoadedAssembly.GetName().Name, "RhinoCommon", StringComparison.OrdinalIgnoreCase)) return;
-                AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
-                Run("запуск Rhino");
-            }
-            catch (Exception ex)
-            {
-                PluginStore.Log("Предзагрузка: ошибка " + ex.Message);
-            }
-        }
-
         /// Выполнить предзагрузку (один раз за сессию). Безопасно вызывать повторно.
         public static void Run(string reason)
         {
@@ -155,7 +135,7 @@ namespace RIR_PluginManager
                 var profile = PluginStore.LoadProfile();
                 if (!profile.PreloadShared)
                 {
-                    PluginStore.Log("Предзагрузка общих библиотек выключена в профиле");
+                    PluginStore.Log("Предзагрузка общих библиотек выключена в настройках");
                     return;
                 }
 
@@ -168,7 +148,11 @@ namespace RIR_PluginManager
                     try
                     {
                         var asm = Assembly.LoadFrom(item.Path);
+#if NETFRAMEWORK
+                        var ctx = "LoadFrom";
+#else
                         var ctx = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(asm)?.Name ?? "?";
+#endif
                         PluginStore.Log($"  {item.Name} {item.Version} из {item.OwnerName} загружена заранее " +
                                         $"(контекст {ctx}); более старые копии: {older}" +
                                         (item.MajorDiffers ? "; основной номер версии отличается — возможна несовместимость" : ""));

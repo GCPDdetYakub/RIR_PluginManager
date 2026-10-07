@@ -17,6 +17,16 @@ namespace RIR_PluginManager
         public string Text { get; init; }
     }
 
+    /// Условия текущего сеанса, от которых зависят критерии проверки.
+    public sealed class CheckContext
+    {
+        public bool NetFramework = Session.IsNetFramework;   // Revit 2021–2024: Rhino работает на .NET Framework 4.8
+        public int RuntimeMajor = Session.RuntimeMajor;       // 4 для .NET Framework, 10 для Revit 2025.5+
+        public int RhinoMajor = Session.RhinoMajor;           // 0 — не определена
+        public bool IconFixActive = IconFix.Active;
+        public Dictionary<string, SharedLibPreloader.Item> Preload;
+    }
+
     /// Проверка плагинов БЕЗ их загрузки: файлы читаются как данные (метаданные PE/.NET),
     /// код плагинов не выполняется, поэтому проверка не может уронить Revit.
     public static class PluginChecker
@@ -27,6 +37,9 @@ namespace RIR_PluginManager
             public string AsmName;
             public Version AsmVersion;
             public string TargetFramework;
+            public int CoreRuntimeMajor;                    // >0: собран под .NET Core / .NET 5+ (основной номер)
+            public int RhinoSdkMajor;
+            public bool StrongNamed;                        // подписанная сборка (есть открытый ключ)                       // основная версия RhinoCommon/Grasshopper, на которую ссылается сборка
             public bool UsesBinaryFormatter;
             public bool UsesIronPython;
             public int SerializedResources;                 // всего ресурсов в формате BinaryFormatter
@@ -56,9 +69,9 @@ namespace RIR_PluginManager
             return d;
         }
 
-        public static Dictionary<string, List<Issue>> Check(IList<PluginGroup> groups, Dictionary<string, Version> loaded, bool iconFixActive,
-                                                             Dictionary<string, SharedLibPreloader.Item> preload = null)
+        public static Dictionary<string, List<Issue>> Check(IList<PluginGroup> groups, Dictionary<string, Version> loaded, CheckContext ctx)
         {
+            var preload = ctx.Preload;
             var result = groups.ToDictionary(g => g.Key, g => new List<Issue>(), StringComparer.OrdinalIgnoreCase);
 
             // имя сборки -> кто её содержит
@@ -72,28 +85,33 @@ namespace RIR_PluginManager
                 {
                     var actual = ActualPath(f);
                     if (actual == null) continue;
+                    if (IsInactiveTargetFolder(f)) continue;      // сборка для другого рантайма в пакете с несколькими
 
                     if (f.EndsWith(".ghpy", StringComparison.OrdinalIgnoreCase))
                     {
+                        if (ctx.RuntimeMajor < 9) continue;           // на .NET Framework и .NET 8 IronPython работает
                         issues.Add(new Issue
                         {
                             Level = IssueLevel.Error,
-                            Text = $"{Path.GetFileName(f)}: Python-компоненты (.ghpy, IronPython 2.7) на .NET 10 не загружаются, Grasshopper покажет окно ошибки"
+                            Text = $"{Path.GetFileName(f)}: Python-компоненты (.ghpy, IronPython 2.7) на .NET {ctx.RuntimeMajor} не загружаются, Grasshopper покажет окно ошибки"
                         });
                         continue;
                     }
 
                     var facts = Analyze(actual);
-                    AddIssues(facts, f, issues, dependency: false, iconFixActive);
+                    AddIssues(facts, f, issues, dependency: false, ctx);
                     if (facts.IsManaged && facts.AsmName != null)
                         Register(owners, facts, g, isGha: true);
                 }
 
+                bool groupIncompatible = IsIncompatibleGroup(g);
                 foreach (var dll in GroupDlls(g))
                 {
                     var facts = Analyze(dll);
                     if (!facts.IsManaged) continue;
-                    AddIssues(facts, dll, issues, dependency: true, iconFixActive);
+                    // У несовместимого плагина замечания по его библиотекам — лишний шум: он не загрузится целиком
+                    if (!groupIncompatible) AddIssues(facts, dll, issues, dependency: true, ctx);
+                    if (groupIncompatible) continue;
                     if (facts.AsmName == null) continue;
                     Register(owners, facts, g, isGha: false);
 
@@ -162,7 +180,7 @@ namespace RIR_PluginManager
                             Level = major ? IssueLevel.Warning : IssueLevel.Info,
                             Text = $"{kv.Key} {myVer}: будет использоваться версия {pre.Version} из {pre.OwnerName} (предзагрузка общих библиотек)" +
                                    (major ? ". Основной номер версии отличается — возможна несовместимость; " +
-                                            $"при проблемах добавьте в профиль preload_exclude={kv.Key}" : "")
+                                            $"при проблемах добавьте в settings-revit{PluginStore.RevitVersion}.txt строку preload_exclude={kv.Key}" : "")
                         });
                         continue;
                     }
@@ -219,7 +237,7 @@ namespace RIR_PluginManager
             list.Add((facts.AsmVersion, g.Key, g.Name, isGha));
         }
 
-        static void AddIssues(FileFacts facts, string file, List<Issue> issues, bool dependency, bool iconFixActive)
+        static void AddIssues(FileFacts facts, string file, List<Issue> issues, bool dependency, CheckContext ctx)
         {
             var name = Path.GetFileName(file);
             if (facts.Error != null)
@@ -229,20 +247,47 @@ namespace RIR_PluginManager
             }
             if (!facts.IsManaged) return;
 
+            // Сборка под более новый рантайм, чем у процесса Revit (например, .NET 7/8 в Revit 2021–2024)
+            if (facts.CoreRuntimeMajor > 0 && (ctx.NetFramework || facts.CoreRuntimeMajor > ctx.RuntimeMajor))
+            {
+                var host = ctx.NetFramework ? ".NET Framework 4.8" : $".NET {ctx.RuntimeMajor}";
+                issues.Add(new Issue
+                {
+                    Level = dependency ? IssueLevel.Warning : IssueLevel.Error,
+                    Text = dependency
+                        ? $"{name}: библиотека собрана под .NET {facts.CoreRuntimeMajor}, а Rhino в этой версии Revit работает на {host}: " +
+                          "функции плагина, которые её используют, работать не будут"
+                        : $"{name}: собран под .NET {facts.CoreRuntimeMajor}, а Rhino в этой версии Revit работает на {host}: " +
+                          "плагин не загрузится или не будет работать. Если он выполняет код при открытии Grasshopper, может уронить Revit"
+                });
+            }
+
+            // Сборка для более новой версии Rhino, чем та, с которой работает Rhino.Inside
+            if (!dependency && ctx.RhinoMajor > 0 && facts.RhinoSdkMajor > ctx.RhinoMajor)
+                issues.Add(new Issue
+                {
+                    Level = IssueLevel.Error,
+                    Text = $"{name}: собран для Rhino {facts.RhinoSdkMajor} (RhinoCommon/Grasshopper {facts.RhinoSdkMajor}), " +
+                           $"а Rhino.Inside работает с Rhino {ctx.RhinoMajor}: плагин не загрузится"
+                });
+
+            // Остальные критерии касаются только .NET 8/10 (Revit 2025+)
+            if (ctx.NetFramework) return;
+
             if (dependency)
             {
                 // Для DLL-зависимостей ссылки на BinaryFormatter и старые ресурсы форм — шум:
                 // они срабатывают, только если плагин откроет соответствующий код. Оставляем лишь IronPython.
-                if (facts.UsesIronPython)
+                if (facts.UsesIronPython && ctx.RuntimeMajor >= 9)
                     issues.Add(new Issue
                     {
                         Level = IssueLevel.Warning,
-                        Text = $"{name}: зависит от IronPython, на .NET 10 Python-часть, скорее всего, не работает"
+                        Text = $"{name}: зависит от IronPython, на .NET {ctx.RuntimeMajor} Python-часть, скорее всего, не работает"
                     });
                 return;
             }
 
-            if (facts.UsesBinaryFormatter)
+            if (facts.UsesBinaryFormatter && ctx.RuntimeMajor >= 9)
                 issues.Add(new Issue
                 {
                     Level = IssueLevel.Warning,
@@ -250,14 +295,18 @@ namespace RIR_PluginManager
                            "функции, которые к нему обращаются, работать не будут"
                 });
 
-            if (facts.UsesIronPython)
+            if (facts.UsesIronPython && ctx.RuntimeMajor >= 9)
                 issues.Add(new Issue
                 {
                     Level = IssueLevel.Warning,
-                    Text = $"{name}: зависит от IronPython, на .NET 10 Python-часть, скорее всего, не работает"
+                    Text = $"{name}: зависит от IronPython, на .NET {ctx.RuntimeMajor} Python-часть, скорее всего, не работает"
                 });
 
-            if (!iconFixActive)
+            if (ctx.RuntimeMajor < 9)
+            {
+                // BinaryFormatter есть в рантайме — ресурсы читаются как обычно
+            }
+            else if (!ctx.IconFixActive)
             {
                 if (facts.SerializedResources > 0)
                     issues.Add(new Issue
@@ -288,6 +337,84 @@ namespace RIR_PluginManager
             }
         }
 
+        /// Сборка под рантайм новее, чем у процесса Revit, или для более новой версии Rhino — она не загрузится.
+        internal static bool IsIncompatibleAssembly(string path)
+        {
+            var f = Analyze(path);
+            if (!f.IsManaged) return false;
+            if (f.CoreRuntimeMajor > 0 && (Session.IsNetFramework || f.CoreRuntimeMajor > Session.RuntimeMajor)) return true;
+            int rhino = Session.RhinoMajor;
+            return rhino > 0 && f.RhinoSdkMajor > rhino;
+        }
+
+        /// Плагин, у которого все .gha несовместимы с сеансом: его библиотеки в процесс не попадут.
+        internal static bool IsIncompatibleGroup(PluginGroup g)
+        {
+            var ghas = g.Files.Where(f => f.EndsWith(".gha", StringComparison.OrdinalIgnoreCase) && !IsInactiveTargetFolder(f))
+                              .Select(ActualPath).Where(p => p != null).ToList();
+            return ghas.Count > 0 && ghas.All(IsIncompatibleAssembly);
+        }
+
+        /// ".NETCoreApp,Version=v7.0" → 7; ".NETFramework,..." / ".NETStandard,..." → 0.
+        static int CoreMajorFromTfm(string tfm)
+        {
+            if (string.IsNullOrEmpty(tfm) || !tfm.StartsWith(".NETCoreApp", StringComparison.OrdinalIgnoreCase)) return 0;
+            int i = tfm.IndexOf("Version=v", StringComparison.OrdinalIgnoreCase);
+            if (i < 0) return 0;
+            var v = tfm.Substring(i + 9);
+            int dot = v.IndexOf('.');
+            int major;
+            return int.TryParse(dot > 0 ? v.Substring(0, dot) : v, out major) ? major : 0;
+        }
+
+        /// Пакеты Rhino 8 могут содержать сборки под несколько рантаймов в папках net48, net7.0, net8.0-windows...
+        /// Rhino загружает только подходящую; остальные при проверке и предзагрузке не учитываются.
+        internal static bool IsInactiveTargetFolder(string path)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                while (!string.IsNullOrEmpty(dir))
+                {
+                    var seg = Path.GetFileName(dir);
+                    int tfm = TfmMajor(seg);
+                    if (tfm != 0)
+                    {
+                        var parent = Path.GetDirectoryName(dir);
+                        if (string.IsNullOrEmpty(parent)) return false;
+                        var siblings = Directory.GetDirectories(parent).Select(d => TfmMajor(Path.GetFileName(d))).Where(m => m != 0).ToList();
+                        if (siblings.Count < 2) return false;           // единственная папка — она и загружается
+                        return tfm != ActiveTfm(siblings);
+                    }
+                    dir = Path.GetDirectoryName(dir);
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// "net48" → 4, "net7.0" / "net7.0-windows" → 7, "netcoreapp3.1" → 3; не папка рантайма → 0.
+        static int TfmMajor(string seg)
+        {
+            if (string.IsNullOrEmpty(seg)) return 0;
+            var m = System.Text.RegularExpressions.Regex.Match(seg, @"^net(coreapp)?(\d+)(\.\d+)?(-[a-z0-9.]+)?$",
+                                                                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return 0;
+            var digits = m.Groups[2].Value;
+            if (m.Groups[1].Success && m.Groups[1].Value.Length > 0) return int.Parse(digits.Substring(0, 1));
+            if (m.Groups[3].Success && m.Groups[3].Value.Length > 0) return int.Parse(digits);   // net7.0
+            if (digits.Length >= 2 && digits[0] == '4') return 4;                                   // net48, net472
+            return 0;
+        }
+
+        static int ActiveTfm(List<int> available)
+        {
+            if (Session.IsNetFramework) return available.Contains(4) ? 4 : -1;
+            var core = available.Where(m => m != 4 && m <= Session.RuntimeMajor).ToList();
+            if (core.Count > 0) return core.Max();
+            return available.Contains(4) ? 4 : -1;
+        }
+
         static string ActualPath(string f)
         {
             if (File.Exists(f)) return f;
@@ -300,8 +427,22 @@ namespace RIR_PluginManager
             if (g.Folder == null || !Directory.Exists(g.Folder)) return Array.Empty<string>();
             try
             {
-                var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
-                return Directory.EnumerateFiles(g.Folder, "*.dll", options).ToList();
+                // Папки с собственным .exe — это отдельные программы (например, локальный сервер, который
+                // плагин запускает отдельным процессом). Их библиотеки в процесс Revit не загружаются.
+                var exeDirs = new HashSet<string>(
+                    FileUtil.EnumerateFiles(g.Folder, "*.exe")
+                            .Select(f => Path.GetDirectoryName(f))
+                            .Where(d => Directory.GetFiles(d, "*.gha").Length == 0 && Directory.GetFiles(d, "*.rhp").Length == 0),
+                    StringComparer.OrdinalIgnoreCase);
+                bool InExeFolder(string f)
+                {
+                    for (var d = Path.GetDirectoryName(f); d != null && d.Length >= g.Folder.Length; d = Path.GetDirectoryName(d))
+                        if (exeDirs.Contains(d)) return true;
+                    return false;
+                }
+                return FileUtil.EnumerateFiles(g.Folder, "*.dll")
+                               .Where(f => !IsInactiveTargetFolder(f) && !InExeFolder(f))
+                               .ToList();
             }
             catch { return Array.Empty<string>(); }
         }
@@ -343,6 +484,7 @@ namespace RIR_PluginManager
                     var ad = md.GetAssemblyDefinition();
                     facts.AsmName = md.GetString(ad.Name);
                     facts.AsmVersion = ad.Version;
+                    facts.StrongNamed = !ad.PublicKey.IsNil;
 
                     foreach (var h in ad.GetCustomAttributes())
                     {
@@ -352,6 +494,7 @@ namespace RIR_PluginManager
                         {
                             var br = md.GetBlobReader(ca.Value);
                             if (br.ReadUInt16() == 1) facts.TargetFramework = br.ReadSerializedString();
+                            facts.CoreRuntimeMajor = CoreMajorFromTfm(facts.TargetFramework);
                         }
                         catch { }
                     }
@@ -368,15 +511,21 @@ namespace RIR_PluginManager
                     }
                 }
 
+                int systemRuntimeMajor = 0;
                 foreach (var h in md.AssemblyReferences)
                 {
                     var ar = md.GetAssemblyReference(h);
-                    if (md.GetString(ar.Name).StartsWith("IronPython", StringComparison.OrdinalIgnoreCase))
-                    {
+                    var refName = md.GetString(ar.Name);
+                    if (refName.StartsWith("IronPython", StringComparison.OrdinalIgnoreCase))
                         facts.UsesIronPython = true;
-                        break;
-                    }
+                    else if (refName == "RhinoCommon" || refName == "Grasshopper")
+                        facts.RhinoSdkMajor = Math.Max(facts.RhinoSdkMajor, ar.Version.Major);
+                    else if (refName == "System.Runtime")
+                        systemRuntimeMajor = Math.Max(systemRuntimeMajor, ar.Version.Major);
                 }
+                // Без атрибута TargetFramework: System.Runtime 5.0+ означает .NET 5 и новее
+                if (facts.TargetFramework == null && systemRuntimeMajor >= 5)
+                    facts.CoreRuntimeMajor = systemRuntimeMajor;
 
                 CountSerializedResources(pe, md, facts);
             }

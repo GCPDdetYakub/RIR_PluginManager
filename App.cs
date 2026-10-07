@@ -38,6 +38,7 @@ namespace RIR_PluginManager
                 case TypeLoadException _:
                 case MissingMethodException _:
                 case MissingFieldException _:
+                case TypeInitializationException _:                   // ошибка статического конструктора (например, Harmony/MonoMod в плагине)
                     return true;
                 case System.IO.FileNotFoundException cecil when cecil.GetType().FullName.StartsWith("Mono.Cecil"):
                     return false;                                     // предварительный анализ сборок Grasshopper, безвреден
@@ -65,7 +66,11 @@ namespace RIR_PluginManager
 
                 int n = System.Threading.Interlocked.Increment(ref _firstChanceCount);
                 // Полный стек вызова в момент исключения
-                PluginStore.Log($"FirstChance #{n} {e.Exception.GetType().FullName}: {e.Exception.Message}" +
+                // У TypeInitializationException и подобных настоящая причина — во вложенных исключениях
+                var inner = "";
+                for (var x = e.Exception.InnerException; x != null; x = x.InnerException)
+                    inner += Environment.NewLine + "  причина: " + x.GetType().FullName + ": " + x.Message;
+                PluginStore.Log($"FirstChance #{n} {e.Exception.GetType().FullName}: {e.Exception.Message}" + inner +
                                 Environment.NewLine + stack);
             }
             catch { }
@@ -80,32 +85,30 @@ namespace RIR_PluginManager
         public Result OnStartup(UIControlledApplication application)
         {
             // 1. Если прошлая сессия упала, вернуть файлам исходные имена.
-            // 2. Если включено автоприменение, сразу отключить плагины из профиля.
+            // 2. Восстановление иконок (только .NET 9+) ставится сразу, до запуска Rhino.
+            // 3. Профиль (он свой для каждой версии Rhino) применяется при запуске Rhino.
             try
             {
                 PluginStore.RevitVersion = application.ControlledApplication.VersionNumber;
                 PluginStore.Log("==== Запуск Revit: RIR_PluginManager " +
                                 Assembly.GetExecutingAssembly().GetName().Version +
-                                ", .NET " + Environment.Version +
                                 ", Revit " + application.ControlledApplication.VersionNumber +
-                                " (" + application.ControlledApplication.VersionBuild + ") ====");
+                                " (" + application.ControlledApplication.VersionBuild + "), " +
+                                Session.RuntimeText + " ====");
                 PluginStore.MigrateLegacy();
-                PluginStore.EnsureProfileName();
+                PluginStore.EnsureProfileFiles();
                 var errors = PluginStore.RestoreAll();
+                foreach (var e in errors) PluginStore.Log("Startup: " + e);
                 var profile = PluginStore.LoadProfile();
 
-                // Восстановление иконок ставится до запуска Grasshopper
-                if (profile.IconFix) IconFix.Install();
-                else PluginStore.Log("IconFix выключен в профиле");
+                if (Session.IsNetFramework)
+                    PluginStore.Log("IconFix не требуется: .NET Framework");
+                else if (profile.IconFix)
+                    IconFix.Install();
+                else
+                    PluginStore.Log("IconFix выключен в настройках");
 
-                // Предзагрузка общих библиотек срабатывает при запуске Rhino (настройка проверяется в этот момент)
-                SharedLibPreloader.Arm();
-                if (profile.AutoApply)
-                {
-                    errors.AddRange(PluginStore.Apply(profile, out int moved));
-                    PluginStore.Log($"Startup: профиль применён автоматически, отключено файлов: {moved}");
-                }
-                foreach (var e in errors) PluginStore.Log("Startup: " + e);
+                RhinoStartup.Arm();
             }
             catch (Exception ex)
             {

@@ -1,3 +1,4 @@
+#if !NETFRAMEWORK
 using System;
 using System.Collections.Concurrent;
 using System.Drawing;
@@ -173,3 +174,17 @@ namespace RIR_PluginManager
         }
     }
 }
+#else
+namespace RIR_PluginManager
+{
+    /// На .NET Framework (Revit 2021–2024) BinaryFormatter есть, восстанавливать иконки не нужно.
+    public static class IconFix
+    {
+        public static bool Active => false;
+        public static string Status => "не требуется на .NET Framework";
+        public static bool IsSupportedType(string resourceTypeName) => false;
+        public static void Install() { }
+        public static string Summary() => "";
+    }
+}
+#endif

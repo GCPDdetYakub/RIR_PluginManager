@@ -42,12 +42,17 @@ namespace RIR_PluginManager
         readonly List<PluginGroup> _groups;
         bool _checked;
         readonly bool _ghLoaded;
+        // Профили: выбранный в окне профиль и его сохранённый список отключённых плагинов
+        readonly ComboBox _profileBox;
+        string _profileName;
+        HashSet<string> _savedDisabled;
+        bool _switchingProfile;
 
         public NextAction Next { get; private set; } = NextAction.None;
 
         public ManagerWindow()
         {
-            Title = $"RIR_PluginManager — плагины Grasshopper для Rhino.Inside (Revit {PluginStore.RevitVersion})";
+            Title = $"RIR_PluginManager — плагины Grasshopper для Rhino.Inside ({Session.Describe()})";
             Width = 1000; Height = 720; MinWidth = 700; MinHeight = 400;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
@@ -63,6 +68,8 @@ namespace RIR_PluginManager
             FontSize = 13;
 
             var profile = PluginStore.LoadProfile();
+            _profileName = profile.Name;
+            _savedDisabled = new HashSet<string>(profile.Disabled, StringComparer.OrdinalIgnoreCase);
             _ghLoaded = PluginStore.GrasshopperPluginsLoaded();
 
             var root = new DockPanel { Margin = new Thickness(10) };
@@ -125,9 +132,32 @@ namespace RIR_PluginManager
             var bottom = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             DockPanel.SetDock(bottom, Dock.Bottom);
 
+            // Профили: свой набор для каждой версии Rhino (папка profiles\rhinoN)
+            var profileRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+            profileRow.Children.Add(new TextBlock
+            {
+                Text = $"Профиль (Rhino {Session.RhinoMajorOrDefault}):",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 6)
+            });
+            _profileBox = new ComboBox
+            {
+                MinWidth = 220,
+                Margin = new Thickness(0, 0, 6, 6),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "Выбор профиля загружает его отметки плагинов. Активным профиль становится после «Применить»."
+            };
+            _profileBox.SelectionChanged += (s, e) => OnProfileSelected();
+            profileRow.Children.Add(_profileBox);
+            profileRow.Children.Add(MakeButton("Новый", (s, e) => NewProfile()));
+            profileRow.Children.Add(MakeButton("Переименовать", (s, e) => RenameProfile()));
+            profileRow.Children.Add(MakeButton("Удалить", (s, e) => DeleteProfile()));
+            bottom.Children.Add(profileRow);
+            RefreshProfileList();
+
             _autoApply = new CheckBox
             {
-                Content = "Применять профиль автоматически при запуске Revit",
+                Content = "Применять профиль автоматически при запуске Rhino",
                 IsChecked = profile.AutoApply,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -138,7 +168,8 @@ namespace RIR_PluginManager
                 Content = $"Восстанавливать иконки старых плагинов без BinaryFormatter (сейчас: {IconFix.Status}; " +
                           "изменение действует после перезапуска Revit)",
                 IsChecked = profile.IconFix,
-                Margin = new Thickness(0, 0, 0, 8)
+                Margin = new Thickness(0, 0, 0, 8),
+                IsEnabled = !Session.IsNetFramework              // на .NET Framework BinaryFormatter есть
             };
             bottom.Children.Add(_iconFix);
 
@@ -149,7 +180,8 @@ namespace RIR_PluginManager
                 IsChecked = profile.PreloadShared,
                 Margin = new Thickness(0, 0, 0, 8),
                 ToolTip = "Если несколько плагинов привозят одну библиотеку в разных версиях, до загрузки Grasshopper " +
-                          "загружается самая новая — так все плагины смогут загрузиться. Исключения: строки preload_exclude= в профиле."
+                          "загружается самая новая — так все плагины смогут загрузиться. Исключения: строки preload_exclude= в файле " +
+                          "settings-revit" + PluginStore.RevitVersion + ".txt."
             };
             bottom.Children.Add(_preload);
 
@@ -158,7 +190,7 @@ namespace RIR_PluginManager
             selectRow.Children.Add(MakeButton("Ни одного", (s, e) => SetAll(false)));
             selectRow.Children.Add(MakeButton("Снять ✖", (s, e) => UncheckRisky(IssueLevel.Error)));
             selectRow.Children.Add(MakeButton("Снять ✖ и ⚠", (s, e) => UncheckRisky(IssueLevel.Warning)));
-            selectRow.Children.Add(MakeButton("Папка профиля", (s, e) => OpenDataDir()));
+            selectRow.Children.Add(MakeButton("Папка надстройки", (s, e) => OpenDataDir()));
             selectRow.Children.Add(MakeButton("Вернуть все файлы", (s, e) => RestoreNow()));
             bottom.Children.Add(selectRow);
 
@@ -203,7 +235,7 @@ namespace RIR_PluginManager
                 // клик по строке выделяет её и показывает замечания справа.
                 var cb = new CheckBox
                 {
-                    IsChecked = !profile.Disabled.Contains(g.Key),
+                    IsChecked = !_savedDisabled.Contains(g.Key),
                     Margin = new Thickness(2, 0, 6, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 };
@@ -323,7 +355,8 @@ namespace RIR_PluginManager
             });
             titleStack.Children.Add(new TextBlock
             {
-                Text = $"RIR_PluginManager  ·  Rhino.Inside  ·  Revit {PluginStore.RevitVersion}",
+                Text = $"RIR_PluginManager  ·  Rhino.Inside  ·  {Session.Describe()}" +
+                       (Session.RhinoMajor > 0 ? "" : "  (версия Rhino не определена, используется профиль Rhino 8)"),
                 FontSize = 11,
                 Foreground = Theme.FgDim
             });
@@ -424,7 +457,7 @@ namespace RIR_PluginManager
                     if (preloadOn)
                         preload = SharedLibPreloader.Plan(groups, disabledNow, exclude, loadedSnapshot)
                                                     .ToDictionary(i => i.Name, StringComparer.OrdinalIgnoreCase);
-                    return PluginChecker.Check(groups, loadedSnapshot, IconFix.Active, preload);
+                    return PluginChecker.Check(groups, loadedSnapshot, new CheckContext { Preload = preload });
                 });
                 ShowResults(results);
                 if (_selected != null) ShowDetails(_selected);
@@ -667,23 +700,187 @@ namespace RIR_PluginManager
             DialogResult = false;
         }
 
+        // ---------- профили ----------
+
+        /// Отключённые плагины по текущим отметкам. Плагины профиля, которых сейчас нет на диске
+        /// (например, временно удалённые), сохраняются.
+        HashSet<string> CurrentDisabled()
+        {
+            var scanned = new HashSet<string>(_rows.Select(r => r.Group.Key), StringComparer.OrdinalIgnoreCase);
+            var set = new HashSet<string>(_savedDisabled.Where(k => !scanned.Contains(k)), StringComparer.OrdinalIgnoreCase);
+            foreach (var r in _rows)
+                if (r.Box.IsChecked != true) set.Add(r.Group.Key);
+            return set;
+        }
+
+        void RefreshProfileList()
+        {
+            _switchingProfile = true;
+            try
+            {
+                _profileBox.Items.Clear();
+                var names = PluginStore.ListProfiles();
+                if (!names.Contains(_profileName, StringComparer.OrdinalIgnoreCase)) names.Insert(0, _profileName);
+                foreach (var n in names) _profileBox.Items.Add(n);
+                _profileBox.SelectedItem = names.First(n => string.Equals(n, _profileName, StringComparison.OrdinalIgnoreCase));
+            }
+            finally { _switchingProfile = false; }
+        }
+
+        void LoadProfileIntoList(string name)
+        {
+            _profileName = name;
+            _savedDisabled = PluginStore.LoadDisabled(name);
+            foreach (var r in _rows) r.Box.IsChecked = !_savedDisabled.Contains(r.Group.Key);
+        }
+
+        void OnProfileSelected()
+        {
+            if (_switchingProfile) return;
+            var name = _profileBox.SelectedItem as string;
+            if (name == null || name == _profileName) return;
+
+            if (!CurrentDisabled().SetEquals(_savedDisabled))
+            {
+                var answer = MessageBox.Show(this,
+                    $"Отметки плагинов в профиле «{_profileName}» изменены. Сохранить их перед переключением?",
+                    Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                if (answer == MessageBoxResult.Cancel)
+                {
+                    // Вернуть прежний выбор после завершения текущего события
+                    Dispatcher.BeginInvoke(new Action(RefreshProfileList));
+                    return;
+                }
+                if (answer == MessageBoxResult.Yes)
+                {
+                    try { PluginStore.SaveDisabled(_profileName, CurrentDisabled()); }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, "Не удалось сохранить профиль:\n" + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Error);
+                        Dispatcher.BeginInvoke(new Action(RefreshProfileList));
+                        return;
+                    }
+                }
+            }
+            LoadProfileIntoList(name);
+        }
+
+        void NewProfile()
+        {
+            var name = AskProfileName("Новый профиль",
+                "Имя нового профиля. В него попадут текущие отметки плагинов.", "", null);
+            if (name == null) return;
+            try
+            {
+                var disabled = CurrentDisabled();
+                PluginStore.CreateProfile(name, disabled);
+                _profileName = name;
+                _savedDisabled = disabled;
+                RefreshProfileList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось создать профиль:\n" + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        void RenameProfile()
+        {
+            var name = AskProfileName("Переименовать профиль",
+                $"Новое имя профиля «{_profileName}».", _profileName, _profileName);
+            if (name == null || name == _profileName) return;
+            try
+            {
+                PluginStore.RenameProfile(_profileName, name);
+                _profileName = name;
+                RefreshProfileList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось переименовать профиль:\n" + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        void DeleteProfile()
+        {
+            if (PluginStore.ListProfiles().Count <= 1)
+            {
+                MessageBox.Show(this, "Это единственный профиль, его нельзя удалить.", Title,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (MessageBox.Show(this, $"Удалить профиль «{_profileName}»?", Title,
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            try
+            {
+                PluginStore.DeleteProfile(_profileName);
+                // После удаления открывается активный профиль (или первый по алфавиту)
+                LoadProfileIntoList(PluginStore.LoadProfile().Name);
+                RefreshProfileList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось удалить профиль:\n" + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// Окно ввода имени профиля. Возвращает null при отмене.
+        string AskProfileName(string caption, string prompt, string initial, string renaming)
+        {
+            var dlg = new Window
+            {
+                Title = caption,
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                WindowStyle = WindowStyle.ToolWindow,
+                Resources = Theme.Load(),
+                Background = Theme.PanelFill,
+                Foreground = Theme.Fg,
+                FontFamily = FontFamily,
+                FontSize = FontSize
+            };
+            var panel = new StackPanel { Margin = new Thickness(16), Width = 380 };
+            panel.Children.Add(new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
+            var box = new TextBox { Text = initial, Padding = new Thickness(4), MaxLength = PluginStore.MaxProfileNameLength };
+            panel.Children.Add(box);
+            var error = new TextBlock { Foreground = Theme.Danger, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            panel.Children.Add(error);
+
+            string result = null;
+            var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            var ok = MakeButton("OK", (s, e) =>
+            {
+                var name = box.Text.Trim();
+                var err = PluginStore.ValidateProfileName(name, renaming);
+                if (err != null) { error.Text = err; box.Focus(); return; }
+                result = name;
+                dlg.DialogResult = true;
+            });
+            ok.IsDefault = true;
+            var cancel = MakeButton("Отмена", (s, e) => dlg.DialogResult = false);
+            cancel.IsCancel = true;
+            buttons.Children.Add(ok);
+            buttons.Children.Add(cancel);
+            panel.Children.Add(buttons);
+            dlg.Content = panel;
+            dlg.Loaded += (s, e) => { box.Focus(); box.SelectAll(); };
+
+            return dlg.ShowDialog() == true ? result : null;
+        }
+
         void Finish(NextAction next)
         {
-            var profile = new Profile
-            {
-                AutoApply = _autoApply.IsChecked == true,
-                IconFix = _iconFix.IsChecked == true,
-                PreloadShared = _preload.IsChecked == true,
-                PreloadExclude = _preloadExclude
-            };
-
-            // Сохраняем отключённые плагины, которых сейчас нет на диске (например, временно удалённые)
-            var scanned = new HashSet<string>(_rows.Select(r => r.Group.Key), StringComparer.OrdinalIgnoreCase);
-            foreach (var key in PluginStore.LoadProfile().Disabled)
-                if (!scanned.Contains(key)) profile.Disabled.Add(key);
-
-            foreach (var r in _rows)
-                if (r.Box.IsChecked != true) profile.Disabled.Add(r.Group.Key);
+            // Настройки читаются с диска, чтобы сохранить активные профили других версий Rhino
+            var profile = PluginStore.LoadProfile();
+            profile.AutoApply = _autoApply.IsChecked == true;
+            profile.IconFix = _iconFix.IsChecked == true;
+            profile.PreloadShared = _preload.IsChecked == true;
+            profile.PreloadExclude = _preloadExclude;
+            profile.Name = _profileName;
+            profile.Disabled = CurrentDisabled();
 
             try
             {
@@ -698,7 +895,7 @@ namespace RIR_PluginManager
             if (_ghLoaded)
             {
                 MessageBox.Show(this,
-                    "Профиль сохранён. Изменения применятся только после перезапуска Revit.",
+                    $"Профиль «{_profileName}» сохранён. Изменения применятся только после перезапуска Revit.",
                     Title, MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
