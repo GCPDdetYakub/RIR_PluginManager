@@ -29,7 +29,7 @@ Revit 2027, а также Revit 2025 и Revit 2026 начиная с обнов�
 
 ## Требования
 
-| Revit | Рантайм | Rhino в Rhino.Inside |
+| Revit | Runtime | Rhino в Rhino.Inside |
 |---|---|---|
 | 2021, 2022, 2023, 2024 | .NET Framework 4.8 | Rhino 7, Rhino 8 |
 | 2025.0–2025.4, 2026.0–2026.4 | .NET 8 | Rhino 8, Rhino 9 |
