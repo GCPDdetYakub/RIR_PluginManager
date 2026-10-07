@@ -34,7 +34,7 @@ Rhino.Inside запускает Rhino и Grasshopper внутри процесс
 
 ## Поддерживаемые версии
 
-| Revit | Рантайм | Rhino в Rhino.Inside | Архив релиза | Проверено |
+| Revit | Runtime | Rhino в Rhino.Inside | Архив релиза | Проверено |
 |---|---|---|---|---|
 | 2021+ | .NET Framework 4.8 | 7, 8 | `R_2021` | ✔ Rhino 7, 8 |
 | 2022+ | .NET Framework 4.8 | 7, 8 | `R_2022` | ✔ Rhino 7, 8 |
