@@ -38,8 +38,8 @@ namespace RIR_PluginManager
             public Version AsmVersion;
             public string TargetFramework;
             public int CoreRuntimeMajor;                    // >0: собран под .NET Core / .NET 5+ (основной номер)
-            public int RhinoSdkMajor;
-            public bool StrongNamed;                        // подписанная сборка (есть открытый ключ)                       // основная версия RhinoCommon/Grasshopper, на которую ссылается сборка
+            public int RhinoSdkMajor;                       // основная версия RhinoCommon/Grasshopper, на которую ссылается сборка
+            public bool StrongNamed;                        // подписанная сборка (есть открытый ключ)
             public bool UsesBinaryFormatter;
             public bool UsesIronPython;
             public int SerializedResources;                 // всего ресурсов в формате BinaryFormatter

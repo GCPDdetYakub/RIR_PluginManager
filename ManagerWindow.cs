@@ -228,8 +228,7 @@ namespace RIR_PluginManager
                 var label = new TextBlock
                 {
                     VerticalAlignment = VerticalAlignment.Center,
-                    Text = $"{g.Name}    [{g.Source}, файлов: {g.Files.Count}" +
-                           (g.DisabledFiles > 0 ? ", сейчас отключён]" : "]")
+                    Text = $"{g.Name}    [{g.Source}, файлов: {g.Files.Count}" + DisabledNote(g) + "]"
                 };
                 // Галочка отдельно от текста: клик по квадрату включает/выключает плагин,
                 // клик по строке выделяет её и показывает замечания справа.
@@ -559,7 +558,7 @@ namespace RIR_PluginManager
             var g = row.Group;
             var sb = new StringBuilder();
             sb.AppendLine(g.Name);
-            sb.AppendLine($"Источник: {g.Source}" + (g.DisabledFiles > 0 ? ", сейчас отключён" : ""));
+            sb.AppendLine($"Источник: {g.Source}" + DisabledNote(g));
             if (g.Folder != null) sb.AppendLine("Папка: " + g.Folder);
             sb.AppendLine();
 
@@ -687,6 +686,11 @@ namespace RIR_PluginManager
             }
         }
 
+        /// ", сейчас отключён" / ", отключён в Revit 2027" (другим работающим Revit) / "".
+        static string DisabledNote(PluginGroup g) =>
+            g.DisabledFiles == 0 ? "" :
+            g.DisabledElsewhere != null ? $", отключён в {g.DisabledElsewhere}" : ", сейчас отключён";
+
         void RestoreNow()
         {
             // Возвращать имена безопасно в любой момент: уже загруженный Grasshopper их не перечитывает.
@@ -694,7 +698,8 @@ namespace RIR_PluginManager
             foreach (var e in errors) PluginStore.Log("RestoreNow: " + e);
             MessageBox.Show(this,
                 errors.Count == 0
-                    ? "Всем файлам возвращены исходные имена. Профиль не изменён."
+                    ? "Файлам возвращены исходные имена. Профиль не изменён.\n\n" +
+                      "Файлы, которые отключил другой работающий Revit, не тронуты: их вернёт тот Revit."
                     : "Часть файлов вернуть не удалось:\n\n" + string.Join(Environment.NewLine, errors.Take(15)),
                 Title, MessageBoxButton.OK, errors.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
             DialogResult = false;

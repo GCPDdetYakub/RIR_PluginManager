@@ -5,13 +5,16 @@
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2025   # Revit 2025 (any update)
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1 -RevitVersion 2024   # Revit 2021-2024 (.NET Framework 4.8)
 # If Revit is installed elsewhere, add: -RevitDir "D:\Autodesk\Revit 2027"
+# If the update of Revit 2025/2026 cannot be read from RevitAPI.dll, add: -DotNet 8 (x.0-x.4) or -DotNet 10 (x.5+)
+# The target Revit must be closed; add -Force to skip this check.
 # The first build needs access to nuget.org (Lib.Harmony and System.Formats.Nrbf for .NET 8/10,
 # System.Reflection.Metadata for .NET Framework 4.8).
 
 param(
     [string]$RevitVersion = "2027",
     [string]$RevitDir = "",
-    [string]$DotNet = ""          # override: 48, 8 or 10
+    [string]$DotNet = "",         # override: 48, 8 or 10
+    [switch]$Force                # do not check whether this Revit is running
 )
 $ErrorActionPreference = "Stop"
 
@@ -24,6 +27,18 @@ if (-not (Test-Path (Join-Path $RevitDir "RevitAPI.dll"))) {
     throw "RevitAPI.dll not found in '$RevitDir'. Pass the correct folder with -RevitDir."
 }
 
+# The add-in DLLs of a running Revit are locked: stop if Revit of this version is running.
+if (-not $Force) {
+    $exe = [System.IO.Path]::GetFullPath((Join-Path $RevitDir "Revit.exe"))
+    $running = @(Get-Process -Name Revit -ErrorAction SilentlyContinue | Where-Object {
+        # Path is empty if it cannot be read: treat such a process as this Revit, to be safe
+        -not $_.Path -or [string]::Equals($_.Path, $exe, [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($running.Count -gt 0) {
+        throw "Revit $RevitVersion is running (process id: $($running.Id -join ', ')). Close it and run again, or add -Force."
+    }
+}
+
 # Runtime of this Revit: 2021-2024 -> .NET Framework 4.8; 2025/2026 up to x.4 -> .NET 8; 2025.5+/2026.5+/2027 -> .NET 10.
 # Determined from the file version of RevitAPI.dll (for example 25.4.x.x or 26.5.x.x).
 $apiVersion = $null
@@ -32,7 +47,11 @@ $year = [int]$RevitVersion
 if ($DotNet) { $dotnet = $DotNet }
 elseif ($year -lt 2025) { $dotnet = "48" }
 elseif ($year -ge 2027) { $dotnet = "10" }
-elseif ($apiVersion -and $apiVersion.Minor -lt 5) { $dotnet = "8" }
+elseif (-not $apiVersion) {
+    throw "Cannot read the version of RevitAPI.dll in '$RevitDir', so the runtime of Revit $RevitVersion is unknown. " +
+          "Add -DotNet 8 for Revit $RevitVersion.0-$RevitVersion.4 or -DotNet 10 for $RevitVersion.5 and later."
+}
+elseif ($apiVersion.Minor -lt 5) { $dotnet = "8" }
 else { $dotnet = "10" }
 Write-Host "Revit $RevitVersion (RevitAPI $apiVersion) -> target runtime: $(if ($dotnet -eq '48') {'.NET Framework 4.8'} else {".NET $dotnet"})"
 

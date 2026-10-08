@@ -97,7 +97,7 @@ namespace RIR_PluginManager
                                 Session.RuntimeText + " ====");
                 PluginStore.MigrateLegacy();
                 PluginStore.EnsureProfileFiles();
-                var errors = PluginStore.RestoreAll();
+                var errors = PluginStore.RecoverOnStartup();
                 foreach (var e in errors) PluginStore.Log("Startup: " + e);
                 var profile = PluginStore.LoadProfile();
 
@@ -178,7 +178,7 @@ namespace RIR_PluginManager
                 if ((DateTime.Now - _ghSeenAt.Value).TotalSeconds < 3) return;
 
                 _ghSeenAt = null;
-                var errors = PluginStore.RestoreAll();
+                var errors = PluginStore.RestoreOwn();
                 PluginStore.Log($"Grasshopper загружен, файлам возвращены имена (ошибок: {errors.Count})");
                 if (IconFix.Active) PluginStore.Log(IconFix.Summary());
                 foreach (var err in errors) PluginStore.Log("AutoRestore: " + err);
@@ -194,7 +194,7 @@ namespace RIR_PluginManager
             if (IconFix.Active) PluginStore.Log(IconFix.Summary() + " (за сессию)");
             try
             {
-                foreach (var e in PluginStore.RestoreAll()) PluginStore.Log("Shutdown: " + e);
+                foreach (var e in PluginStore.RestoreOwn()) PluginStore.Log("Shutdown: " + e);
             }
             catch (Exception ex)
             {

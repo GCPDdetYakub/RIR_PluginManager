@@ -13,6 +13,7 @@ namespace RIR_PluginManager
         public string Folder { get; init; }                        // папка плагина (null, если это одиночный файл в корне)
         public List<string> Files { get; } = new List<string>();   // исходные пути (без .off)
         public int DisabledFiles { get; set; }                    // сколько из них сейчас переименовано в .off
+        public string DisabledElsewhere { get; set; }             // отключён другим работающим Revit ("Revit 2027"), иначе null
     }
 
     public sealed class Profile
@@ -44,12 +45,12 @@ namespace RIR_PluginManager
         // Настройки надстройки — общие для версии Revit; профили — в папке profiles (см. «Профили»)
         static string SettingsName => $"settings-revit{RevitVersion}.txt";
         static string SettingsPath => Path.Combine(DataDir, SettingsName);
-        static string StatePath => Path.Combine(DataDir, "renamed.txt");
         static string FoldersPath => Path.Combine(DataDir, "folders.txt");
         public static string LogsDir => Path.Combine(DataDir, "logs");
         const int MaxSessionLogs = 5;                        // хранятся логи только последних запусков Revit
 
-        public static bool HasDisabledFiles => File.Exists(StatePath);
+        /// Есть ли файлы, отключённые этим процессом Revit (единый журнал, см. DisabledJournal).
+        public static bool HasDisabledFiles => DisabledJournal.HasOwnEntries;
 
         // ---------- Где искать плагины ----------
 
@@ -75,9 +76,9 @@ namespace RIR_PluginManager
         public static List<PluginGroup> Scan()
         {
             var groups = new Dictionary<string, PluginGroup>(StringComparer.OrdinalIgnoreCase);
-            // Файлы, которые отключил этот аддон: их тоже показываем (как отключённые).
-            // Чужие *.off (переименованные вручную) не трогаем и не показываем.
-            var tracked = ReadState();
+            // Файлы, которые отключила надстройка (этот или другой процесс Revit, по единому журналу):
+            // их тоже показываем как отключённые. Чужие *.off (переименованные вручную) не трогаем и не показываем.
+            var tracked = DisabledJournal.ReadAll(out _);
 
             foreach (var (label, root) in Roots())
             {
@@ -94,7 +95,7 @@ namespace RIR_PluginManager
                     if (f.EndsWith(OffSuffix, StringComparison.OrdinalIgnoreCase))
                     {
                         var orig = f.Substring(0, f.Length - OffSuffix.Length);
-                        if (!IsPluginFile(orig) || !tracked.Contains(orig) || File.Exists(orig)) continue;
+                        if (!IsPluginFile(orig) || !tracked.ContainsKey(orig) || File.Exists(orig)) continue;
                         f = orig;
                         disabled = true;
                     }
@@ -114,7 +115,17 @@ namespace RIR_PluginManager
                         groups[key] = g;
                     }
                     g.Files.Add(f);
-                    if (disabled) g.DisabledFiles++;
+                    if (disabled)
+                    {
+                        g.DisabledFiles++;
+                        // Отключён только другим работающим Revit — показать, каким
+                        var owners = tracked[f];
+                        if (!owners.Any(o => o.Own))
+                        {
+                            var others = owners.Where(o => o.Alive).Select(o => "Revit " + o.Entry.Revit).Distinct().ToList();
+                            if (others.Count > 0) g.DisabledElsewhere = string.Join(", ", others);
+                        }
+                    }
                 }
             }
 
@@ -139,82 +150,46 @@ namespace RIR_PluginManager
 
         // ---------- Отключение / восстановление ----------
 
-        /// Возвращает все ранее переименованные файлы, затем отключает группы из профиля.
+        /// Возвращает свои ранее отключённые файлы, затем отключает группы из профиля.
+        /// Запись в единый журнал делается до переименования (см. DisabledJournal).
         public static List<string> Apply(Profile profile, out int moved)
         {
-            var errors = RestoreAll();
+            var errors = RestoreOwn();
             moved = 0;
             if (profile.Disabled.Count == 0) return errors;
 
-            Directory.CreateDirectory(DataDir);
-            foreach (var g in Scan().Where(g => profile.Disabled.Contains(g.Key)))
-            {
-                foreach (var f in g.Files)
-                {
-                    if (!File.Exists(f)) continue;   // не удалось восстановить ранее, уже в списке ошибок
-                    var off = f + OffSuffix;
-                    if (File.Exists(off))
-                    {
-                        errors.Add($"{f}: уже существует {Path.GetFileName(off)}, файл не тронут");
-                        continue;
-                    }
-                    try
-                    {
-                        // Сначала записываем в журнал, потом переименовываем:
-                        // при сбое между этими шагами восстановление просто пропустит строку.
-                        File.AppendAllLines(StatePath, new[] { f });
-                        File.Move(f, off);
-                        moved++;
-                    }
-                    catch (Exception ex)
-                    {
-                        errors.Add($"{f}: {ex.Message}");
-                    }
-                }
-            }
+            var files = Scan().Where(g => profile.Disabled.Contains(g.Key)).SelectMany(g => g.Files).ToList();
+            moved = DisabledJournal.Disable(files, errors);
             Log($"Apply: отключено файлов: {moved}, ошибок: {errors.Count}");
             return errors;
         }
 
-        /// Возвращает исходные имена всем файлам, которые переименовал этот аддон.
+        /// Возвращает имена файлам, которые отключил этот процесс Revit (после загрузки Grasshopper и при выходе).
+        /// Файл, который ещё нужен другому работающему Revit, остаётся отключённым.
+        public static List<string> RestoreOwn() => DisabledJournal.RestoreOwn();
+
+        /// Свои файлы и файлы завершившихся процессов Revit (кнопка «Вернуть все файлы»).
+        /// Файлы, отключённые другим работающим Revit, не трогаются.
         public static List<string> RestoreAll()
         {
-            var errors = new List<string>();
-            if (!File.Exists(StatePath)) return errors;
-
-            var remaining = new List<string>();
-            foreach (var p in ReadState())
-            {
-                var off = p + OffSuffix;
-                if (!File.Exists(off)) continue;              // уже восстановлен или не был переименован
-                if (File.Exists(p))
-                {
-                    errors.Add($"{p}: оригинал уже существует, {Path.GetFileName(off)} оставлен как есть");
-                    continue;
-                }
-                try { File.Move(off, p); }
-                catch (Exception ex)
-                {
-                    errors.Add($"{p}: не удалось восстановить: {ex.Message}");
-                    remaining.Add(p);
-                }
-            }
-
-            if (remaining.Count == 0) File.Delete(StatePath);
-            else File.WriteAllLines(StatePath, remaining);
+            var errors = DisabledJournal.RestoreOwn();
+            errors.AddRange(DisabledJournal.RestoreOrphans());
             return errors;
         }
 
-        static HashSet<string> ReadState()
+        /// При запуске Revit: перенос старых журналов renamed.txt (до 1.18) и возврат файлов,
+        /// которые остались отключёнными после сбоя любой версии Revit.
+        public static List<string> RecoverOnStartup()
         {
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (!File.Exists(StatePath)) return set;
-            foreach (var l in File.ReadAllLines(StatePath))
+            try
             {
-                var t = l.Trim();
-                if (t.Length > 0) set.Add(t);
+                DisabledJournal.RevitVersion = RevitVersion;
+                DisabledJournal.ImportLegacy(new[] { Path.Combine(LegacyDir, "renamed.txt") }, Log);
             }
-            return set;
+            catch (Exception ex) { Log("Перенос старых журналов: " + ex.Message); }
+            var errors = DisabledJournal.RestoreOrphans();
+            Log($"Единый журнал: {DisabledJournal.FilePath}; восстановление после сбоя, ошибок: {errors.Count}");
+            return errors;
         }
 
         // ---------- Профили ----------
@@ -568,7 +543,7 @@ namespace RIR_PluginManager
         /// Папка надстройки до переименования в RIR_PluginManager (версии до 1.11), рядом с текущей.
         static string OldAddinDir => Path.Combine(Path.GetDirectoryName(DataDir) ?? "", "RirPluginManager");
 
-        /// Переносит профиль и список отключённых файлов из прежних мест:
+        /// Переносит профиль и список папок из прежних мест:
         /// %APPDATA%\RirPluginManager (версии 1.0–1.2) и ...\Addins\<версия>\RirPluginManager (до 1.11).
         public static void MigrateLegacy()
         {
@@ -592,16 +567,14 @@ namespace RIR_PluginManager
                         }
                     }
 
-                    // Список отключённых файлов объединяем, папки пользователя копируем
-                    foreach (var name in new[] { "renamed.txt", "folders.txt" })
+                    // Папки пользователя копируем. Старые списки отключённых файлов (renamed.txt)
+                    // переносит в единый журнал DisabledJournal.ImportLegacy.
+                    foreach (var name in new[] { "folders.txt" })
                     {
                         var src = Path.Combine(dir, name);
                         if (!File.Exists(src)) continue;
                         var dst = Path.Combine(DataDir, name);
-                        if (name == "renamed.txt" && File.Exists(dst))
-                            File.AppendAllLines(dst, File.ReadAllLines(src));
-                        else if (!File.Exists(dst))
-                            File.Copy(src, dst);
+                        if (!File.Exists(dst)) File.Copy(src, dst);
                         File.Delete(src);
                         Log($"Migrate: {name} из {dir}");
                     }
