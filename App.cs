@@ -54,10 +54,13 @@ namespace RIR_PluginManager
         static void OnFirstChance(object sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
         {
             if (_inFirstChance) return;
-            if (!IsInteresting(e.Exception)) return;
             _inFirstChance = true;
             try
             {
+                // Маркер падения: ошибка в коде плагина (любого типа) во время загрузки и открытия Grasshopper
+                CrashMarker.NoteException(e.Exception);
+
+                if (!IsInteresting(e.Exception)) return;
                 var stack = Environment.StackTrace;
                 // Ошибки чтения иконок перехватывает IconFix: в лог они не пишутся, итог см. строку "IconFix: восстановлено ..."
                 if (IconFix.Active && e.Exception is PlatformNotSupportedException &&
@@ -108,6 +111,8 @@ namespace RIR_PluginManager
                 else
                     PluginStore.Log("IconFix выключен в настройках");
 
+                // Маркер падения: разобрать прошлый запуск и следить за загрузкой Grasshopper
+                CrashMarker.Arm();
                 RhinoStartup.Arm();
             }
             catch (Exception ex)
@@ -169,7 +174,11 @@ namespace RIR_PluginManager
                 if (_throttle.ElapsedMilliseconds < 2000) return;
                 _throttle.Restart();
 
-                if (!PluginStore.HasDisabledFiles) { _ghSeenAt = null; return; }
+                // Прошлый запуск упал при загрузке или открытии Grasshopper — сообщить, когда Revit готов к работе
+                if (CrashMarker.Pending != null) ShowCrashReport();
+                CrashMarker.Tick();
+
+                if (!PluginStore.HasDisabledFiles && !CrashMarker.NeedsLoadedMark) { _ghSeenAt = null; return; }
                 if (!PluginStore.GrasshopperPluginsLoaded()) return;
 
                 // Grasshopper загружает плагины синхронно в UI-потоке, поэтому к первому Idling
@@ -178,6 +187,8 @@ namespace RIR_PluginManager
                 if ((DateTime.Now - _ghSeenAt.Value).TotalSeconds < 3) return;
 
                 _ghSeenAt = null;
+                CrashMarker.MarkLoaded();
+                if (!PluginStore.HasDisabledFiles) return;
                 var errors = PluginStore.RestoreOwn();
                 PluginStore.Log($"Grasshopper загружен, файлам возвращены имена (ошибок: {errors.Count})");
                 if (IconFix.Active) PluginStore.Log(IconFix.Summary());
@@ -189,8 +200,90 @@ namespace RIR_PluginManager
             }
         }
 
+        /// Сообщение о падении прошлого запуска с предложением отключить подозреваемый плагин
+        /// (или, если виновник не определён, загружавшиеся несовместимые плагины).
+        static void ShowCrashReport()
+        {
+            var r = CrashMarker.Pending;
+            CrashMarker.ClearPending();
+            try
+            {
+                var when = r.WhenUtc == DateTime.MinValue ? "" : $" ({r.WhenUtc.ToLocalTime():dd.MM.yyyy HH:mm})";
+                // «Во время загрузки» — только когда виновник определён по последнему загружавшемуся плагину;
+                // ошибка плагина или падение без виновника могли случиться и при открытии окна Grasshopper.
+                var phase = r.AfterLoad ? "при открытии Grasshopper"
+                          : r.Kind == CrashMarker.CrashKind.LastLoaded ? "во время загрузки Grasshopper"
+                          : "при загрузке или открытии Grasshopper";
+                var td = new TaskDialog("RIR_PluginManager")
+                {
+                    MainInstruction = $"Прошлый запуск Revit завершился аварийно {phase}{when}"
+                };
+
+                var keys = new System.Collections.Generic.List<string>();
+                string disableLabel = null;
+                string keepDescription = null;
+                switch (r.Kind)
+                {
+                    case CrashMarker.CrashKind.PluginError:
+                        td.MainContent = $"Перед падением произошла ошибка в коде плагина «{r.Name}». Вероятно, Revit упал из-за него." +
+                                         "\n\n" + r.Error + (string.IsNullOrEmpty(r.File) ? "" : "\n\n" + r.File);
+                        keys.Add(r.Key);
+                        disableLabel = $"Отключить «{r.Name}»";
+                        keepDescription = "Перед запуском Grasshopper надстройка напомнит об этом плагине.";
+                        break;
+
+                    case CrashMarker.CrashKind.LastLoaded:
+                        td.MainContent = $"Последним загружался плагин «{r.Name}». Вероятно, Revit упал из-за него." +
+                                         (string.IsNullOrEmpty(r.File) ? "" : "\n\n" + r.File);
+                        keys.Add(r.Key);
+                        disableLabel = $"Отключить «{r.Name}»";
+                        keepDescription = "Перед запуском Grasshopper надстройка напомнит об этом плагине.";
+                        break;
+
+                    default:
+                        td.MainContent = "Определить плагин, из-за которого упал Revit, не удалось." +
+                                         (string.IsNullOrEmpty(r.File) ? "" : $"\n\nПоследним загружался: {r.File}");
+                        if (r.Candidates.Count > 0)
+                        {
+                            td.MainContent += "\n\nВ той сессии загружались плагины, несовместимые с этой версией Revit " +
+                                              "(✖ в проверке плагинов): " + string.Join(", ", r.Candidates.ConvertAll(c => c.name)) +
+                                              ". Вероятнее всего, причина в одном из них.";
+                            keys.AddRange(r.Candidates.ConvertAll(c => c.key));
+                            disableLabel = r.Candidates.Count == 1 ? $"Отключить «{r.Candidates[0].name}»" : $"Отключить их ({r.Candidates.Count})";
+                        }
+                        else
+                            td.MainContent += "\n\nНесовместимых плагинов среди загружавшихся не найдено. " +
+                                              "Запись загрузки сохранена в файле last-crash.txt в папке надстройки.";
+                        break;
+                }
+
+                bool profileExists = !string.IsNullOrEmpty(r.ProfilePath) && System.IO.File.Exists(r.ProfilePath);
+                bool canDisable = keys.Count > 0 && profileExists;
+                if (canDisable)
+                {
+                    var profileName = System.IO.Path.GetFileNameWithoutExtension(r.ProfilePath);
+                    td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, disableLabel,
+                        $"В профиле «{profileName}» (Rhino {r.Rhino}). Подействует при следующем запуске Grasshopper.");
+                    if (keepDescription != null)
+                        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Оставить включённым", keepDescription);
+                    else
+                        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Оставить как есть");
+                }
+                else
+                {
+                    if (keys.Count > 0)
+                        td.MainContent += "\n\nПрофиль той сессии не найден: отключить плагин можно в окне Plugin Manager.";
+                    td.CommonButtons = TaskDialogCommonButtons.Close;
+                }
+                if (td.Show() == TaskDialogResult.CommandLink1 && canDisable)
+                    foreach (var key in keys) PluginStore.AddDisabledToProfileFile(r.ProfilePath, key);
+            }
+            catch (Exception ex) { PluginStore.Log("Сообщение о падении: " + ex.Message); }
+        }
+
         public Result OnShutdown(UIControlledApplication application)
         {
+            CrashMarker.EndSession();
             if (IconFix.Active) PluginStore.Log(IconFix.Summary() + " (за сессию)");
             try
             {

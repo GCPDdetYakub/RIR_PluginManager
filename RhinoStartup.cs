@@ -56,6 +56,9 @@ namespace RIR_PluginManager
                 if (PluginStore.GrasshopperPluginsLoaded()) return;
 
                 var profile = PluginStore.LoadProfile();
+                var suspects = CrashMarker.EnabledSuspects(profile.Disabled);
+                if (suspects.Count > 0)
+                    PluginStore.Log("Внимание: включены плагины, на которых Revit уже падал при загрузке или открытии Grasshopper: " + CrashMarker.List(suspects));
                 if (profile.AutoApply)
                 {
                     var errors = PluginStore.Apply(profile, out int moved);

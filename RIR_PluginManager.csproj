@@ -25,7 +25,7 @@
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
     <AssemblyName>RIR_PluginManager</AssemblyName>
-    <Version>1.18.0</Version>
+    <Version>1.19.0</Version>
     <RootNamespace>RIR_PluginManager</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- Промежуточные файлы отдельно для каждой версии Revit, чтобы сборки не мешали друг другу -->

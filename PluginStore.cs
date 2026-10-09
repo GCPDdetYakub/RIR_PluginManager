@@ -54,11 +54,13 @@ namespace RIR_PluginManager
 
         // ---------- Где искать плагины ----------
 
-        internal static IEnumerable<(string label, string path)> Roots()
+        internal static IEnumerable<(string label, string path)> Roots() => Roots(Session.RhinoMajorOrDefault);
+
+        internal static IEnumerable<(string label, string path)> Roots(int rhino)
         {
             yield return ("Libraries", Path.Combine(AppData, "Grasshopper", "Libraries"));
             // Пакеты Package Manager — своя папка у каждой версии Rhino (7.0, 8.0, 9.0)
-            yield return ("Packages", Path.Combine(AppData, "McNeel", "Rhinoceros", "packages", Session.RhinoMajorOrDefault + ".0"));
+            yield return ("Packages", Path.Combine(AppData, "McNeel", "Rhinoceros", "packages", rhino + ".0"));
 
             // Дополнительные папки (например, из GrasshopperDeveloperSettings), по одной на строку
             if (File.Exists(FoldersPath))
@@ -73,14 +75,17 @@ namespace RIR_PluginManager
             }
         }
 
-        public static List<PluginGroup> Scan()
+        public static List<PluginGroup> Scan() => Scan(Session.RhinoMajorOrDefault);
+
+        /// Плагины в папках указанной версии Rhino (например, версии Rhino упавшего запуска).
+        public static List<PluginGroup> Scan(int rhino)
         {
             var groups = new Dictionary<string, PluginGroup>(StringComparer.OrdinalIgnoreCase);
             // Файлы, которые отключила надстройка (этот или другой процесс Revit, по единому журналу):
             // их тоже показываем как отключённые. Чужие *.off (переименованные вручную) не трогаем и не показываем.
             var tracked = DisabledJournal.ReadAll(out _);
 
-            foreach (var (label, root) in Roots())
+            foreach (var (label, root) in Roots(rhino))
             {
                 if (!Directory.Exists(root)) continue;
 
@@ -130,6 +135,54 @@ namespace RIR_PluginManager
             }
 
             return groups.Values.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        /// Группа плагина (ключ профиля и имя), к которой относится файл; null — файл вне папок плагинов.
+        /// Правило то же, что в Scan: группа — первая папка внутри корня или имя файла в корне.
+        public static (string key, string name)? GroupOfFile(string path, int rhino)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            foreach (var (label, root) in Roots(rhino))
+            {
+                var full = Path.GetFullPath(root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(path).StartsWith(full, StringComparison.OrdinalIgnoreCase)) continue;
+                var rel = FileUtil.RelativePath(root, path);
+                var first = rel.Split(Path.DirectorySeparatorChar)[0];
+                var seg = first == rel ? Path.GetFileNameWithoutExtension(first) : first;
+                return (label + "|" + seg, seg);
+            }
+            return null;
+        }
+
+        /// Файл плагина (.gha, .ghpy) в папках плагинов, у которого такое имя сборки (для сборок, загруженных из памяти,
+        /// у которых нет пути к файлу — режим Grasshopper «COFF»).
+        public static string FindGhaByAssemblyName(string assemblyName, int rhino)
+        {
+            if (string.IsNullOrEmpty(assemblyName)) return null;
+            return GhaByAssemblyName(rhino).TryGetValue(assemblyName, out var f) ? f : null;
+        }
+
+        /// Все файлы плагинов (.gha и .ghpy) в папках плагинов: имя сборки → путь (первый найденный).
+        public static Dictionary<string, string> GhaByAssemblyName(int rhino)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (_, root) in Roots(rhino))
+            {
+                if (!Directory.Exists(root)) continue;
+                var files = new List<string>();
+                try { files.AddRange(FileUtil.EnumerateFiles(root, "*.gha")); } catch { }
+                try { files.AddRange(FileUtil.EnumerateFiles(root, "*.ghpy")); } catch { }
+                foreach (var f in files)
+                {
+                    try
+                    {
+                        var name = System.Reflection.AssemblyName.GetAssemblyName(f).Name;
+                        if (!string.IsNullOrEmpty(name) && !map.ContainsKey(name)) map[name] = f;
+                    }
+                    catch { }
+                }
+            }
+            return map;
         }
 
         /// DLL, лежащие прямо в корне Libraries (общие зависимости нескольких плагинов).
@@ -214,6 +267,21 @@ namespace RIR_PluginManager
             p.Name = ResolveActiveName(p);
             ReadProfileFile(ProfileFile(p.Name), p);
             return p;
+        }
+
+        /// Файл активного профиля текущей версии Rhino.
+        public static string ActiveProfilePath() => ProfileFile(LoadProfile().Name);
+
+        /// Добавить плагин в отключённые в указанном файле профиля (из сообщения о падении).
+        public static void AddDisabledToProfileFile(string path, string key)
+        {
+            var p = new Profile();
+            ReadProfileFile(path, p);
+            if (!p.Disabled.Add(key)) return;
+            var dir = Path.GetFileName(Path.GetDirectoryName(path) ?? "");            // rhinoN
+            int.TryParse(dir.StartsWith("rhino", StringComparison.OrdinalIgnoreCase) ? dir.Substring(5) : "", out var rhino);
+            WriteDisabled(p.Disabled, path, Path.GetFileNameWithoutExtension(path), rhino);
+            Log($"Плагин {key} отключён в профиле {Path.GetFileNameWithoutExtension(path)} (Rhino {rhino})");
         }
 
         /// Имена профилей текущей версии Rhino (по алфавиту).

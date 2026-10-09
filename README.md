@@ -1,14 +1,10 @@
 # RIR_PluginManager
 
-<img width="1714" height="1354" alt="RIR_PM" src="https://github.com/user-attachments/assets/3c0d1dfa-7d4b-4b16-9de3-ad0aaa97a15a" />
-
-https://github.com/user-attachments/assets/33672fb4-bad7-4a2d-8c64-40d1989c191c
-
 **RIR_PluginManager** — надстройка для Revit, которая помогает Grasshopper стабильно работать внутри **Rhino.Inside.Revit**. Она решает частую проблему: в обычном Rhino все плагины Grasshopper работают, а в Revit Grasshopper падает вместе с Revit или часть плагинов не загружается. Надстройка устраняет известные причины таких сбоев, позволяет выбрать, какие плагины загружать в Revit, и заранее, без загрузки, показывает, какие плагины в этой версии Revit работать не будут.
 
 Поддерживаются **Revit 2021–2027** (все три Revit Runtime: .NET Framework 4.8, .NET 8 и .NET 10) и **Rhino 7, 8 и 9** — в тех сочетаниях, которые допускает Rhino.Inside (см. «Поддерживаемые версии»).
 
-> **English summary.** A Revit add-in that makes Grasshopper stable inside Rhino.Inside.Revit on Revit 2021–2027 (.NET Framework 4.8, .NET 8 and .NET 10) with Rhino 7, 8 and 9. It solves the typical problem "plugins work in standalone Rhino, but Grasshopper crashes or fails to load them inside Revit". It restores icons of old plugins stored in the removed `BinaryFormatter` format (a source of Revit crashes on .NET 9+), preloads the newest version of libraries shared by several plugins, lets you choose which plugins load inside Revit with named profiles per Rhino version (standalone Rhino is not affected), and checks plugins for known incompatibilities (target runtime, Rhino version, .NET 10 issues) without loading them.
+> **English summary.** A Revit add-in that makes Grasshopper stable inside Rhino.Inside.Revit on Revit 2021–2027 (.NET Framework 4.8, .NET 8 and .NET 10) with Rhino 7, 8 and 9. It solves the typical problem "plugins work in standalone Rhino, but Grasshopper crashes or fails to load them inside Revit". It restores icons of old plugins stored in the removed `BinaryFormatter` format (a source of Revit crashes on .NET 9+), preloads the newest version of libraries shared by several plugins, lets you choose which plugins load inside Revit with named profiles per Rhino version (standalone Rhino is not affected), checks plugins for known incompatibilities (target runtime, Rhino version, .NET 10 issues) without loading them, and, if Revit crashes while Grasshopper loads or opens, names the plugin that caused it at the next start and offers to disable it.
 
 ## Какую проблему решает
 
@@ -31,6 +27,7 @@ Rhino.Inside запускает Rhino и Grasshopper внутри процесс
 | **Выборочная загрузка и профили** | Позволяет не загружать в Revit выбранные плагины. Наборы сохраняются в именованные профили, свои для каждой версии Rhino. Обычный Rhino по-прежнему видит все плагины. |
 | **Предзагрузка общих библиотек** | До загрузки плагинов загружает самую новую версию каждой библиотеки, которую несколько плагинов привозят в разных версиях, чтобы все они смогли загрузиться. |
 | **Восстановление иконок** (.NET 8/10) | Перехватывает чтение ресурсов и восстанавливает картинки старого формата без `BinaryFormatter`. Устраняет падения Revit из-за иконок. |
+| **Если Revit упал** | Пока Grasshopper загружается и открывается, надстройка записывает, какой плагин грузится и в коде какого плагина возникают ошибки. Если Revit упадёт, при следующем запуске она назовёт плагин, на котором это случилось, и предложит его отключить; перед следующими запусками Grasshopper напомнит о нём. |
 | **Диагностический лог** | Записывает ошибки загрузки сборок и их причины, чтобы можно было найти плагин, из-за которого падает Revit. |
 
 Все механизмы универсальные: надстройка не содержит решений под конкретные плагины.
@@ -42,7 +39,7 @@ Rhino.Inside запускает Rhino и Grasshopper внутри процесс
 | 2021 | .NET Framework 4.8 | 7, 8 | 7 — .NET Framework 4.8; 8 — .NET 8 | `R_2021` | ✔ Rhino 7, 8 |
 | 2022 | .NET Framework 4.8 | 7, 8 | 7 — .NET Framework 4.8; 8 — .NET 8 | `R_2022` | ✔ Rhino 7, 8 |
 | 2023 | .NET Framework 4.8 | 7, 8 | 7 — .NET Framework 4.8; 8 — .NET 8 | `R_2023` | проверяется |
-| 2024 | .NET Framework 4.8 | 7, 8 | 7 — .NET Framework 4.8; 8 — .NET 8 | `R_2024` | проверяется |
+| 2024 | .NET Framework 4.8 | 7, 8 | 7 — .NET Framework 4.8; 8 — .NET 8 | `R_2024` | ✔ Rhino 8 |
 | 2025.0–2025.4 | .NET 8 | 8 | 8 — .NET 8 | `R_2025.0-2025.4` | не проверено |
 | 2025.5 и новее | .NET 10 | 8 (8.32 и новее), 9 | 8 — .NET 8; 9 — .NET 9 (WIP) | `R_2025.5+` | ✔ Rhino 8 |
 | 2026.0–2026.4 | .NET 8 | 8 | 8 — .NET 8 | `R_2026.0-2026.4` | не проверено |
@@ -153,6 +150,23 @@ dotnet build .\RIR_PluginManager.csproj -c Release -p:RevitVersion=2026 -p:Revit
 
 Прежние версии надстройки (до 1.18) вели отдельный список `renamed.txt` в папке каждой версии Revit. Версия 1.18 переносит такие списки в общий автоматически. Список версии Revit, которая в этот момент открыта с прежней версией надстройки, не трогается — поэтому обновлять надстройку лучше сразу во всех версиях Revit.
 
+### Если Revit упал
+
+Пока Grasshopper загружается, надстройка записывает в свой файл каждый загружаемый плагин (`.gha`, `.ghpy`), а также ошибки, которые возникают в коде плагинов: с начала загрузки и ещё минуту после неё (в это время открывается окно Grasshopper и плагины выполняют свой код при его создании). Загрузка считается законченной, когда окно Grasshopper открыто и несколько секунд не загружается ни один плагин; эту отметку и конец минуты наблюдения надстройка ставит сама, даже если вы всё это время работаете в окне Grasshopper. Ошибка приписывается плагину, если в цепочке вызовов есть код из его папки (сам `.gha`/`.ghpy` или его библиотеки; файл плагина важнее библиотеки, которую мог загрузить и другой плагин); ошибки внутри Grasshopper, Rhino и Revit — например, когда Grasshopper не может разобрать несовместимый `.gha` — плагинам не приписываются. Не записываются и ошибки чтения старых иконок, которые исправляет восстановление иконок: плагин при этом работает нормально. Запись идёт сразу на диск, поэтому сохраняется и при падении Revit. При штатном закрытии Revit файл удаляется.
+
+Если при следующем запуске этой же версии Revit файл остался, значит прошлый запуск завершился аварийно. Подозреваемого надстройка определяет по последней записи:
+
+- **ошибка в коде плагина** — Revit упал вскоре после неё, при загрузке или открытии Grasshopper. Подозреваемый — этот плагин;
+- **загрузка плагина** — Revit упал во время загрузки Grasshopper. Подозреваемый — последний загружавшийся плагин;
+- **последним загружался файл вне папок плагинов** (стандартные компоненты Grasshopper, сам Rhino.Inside) — точного виновника нет. В сообщении перечисляются плагины, которые загружались в том запуске и несовместимы с этой версией Revit (✖ в проверке плагинов): чаще всего падение вызывает один из них;
+- **падение позже, во время работы** — причиной может быть что угодно, поэтому подозреваемого надстройка не называет и только пишет в лог последние загруженные плагины.
+
+Сразу после запуска Revit появится сообщение с выбором: **«Отключить»** (в профиле, который был активен при падении; подействует при следующем запуске Grasshopper) или **«Оставить включённым»**.
+
+Плагин, на котором падал Revit, помечается в окне Plugin Manager значком «⚠ падение» и попадает в список подозреваемых. Если он включён, перед запуском Grasshopper (кнопки «Применить…» в окне и «Grasshopper (профиль)») надстройка предупредит и предложит отключить его или продолжить как есть. Пометка снимается сама, когда Grasshopper с этим плагином загрузится без сбоя и Revit закроется штатно. При запуске Grasshopper штатной кнопкой Rhino.Inside предупреждение пишется только в лог. Несовместимые плагины из сообщения без точного виновника в список подозреваемых не попадают.
+
+Ограничение: подозреваемый определяется по последней записи перед падением. Если плагин уронил Revit без ошибки, которую видно из .NET (например, в собственном машинном коде), или позже, во время работы, надстройка этого не определит.
+
 ### Профили
 
 Профиль — именованный набор отключённых плагинов. У каждой версии Rhino свои профили. В нижней части окна можно выбрать профиль, создать новый (в него попадут текущие отметки), переименовать или удалить его. Последний профиль удалить нельзя.
@@ -204,6 +218,9 @@ dotnet build .\RIR_PluginManager.csproj -c Release -p:RevitVersion=2026 -p:Revit
 | `profiles\rhino<версия>\<имя>.txt` | Профили: отключённые плагины (`disabled=`). Профили прежних версий надстройки (`profile-revit<год>-rhino<версия>.txt` и единый `profile-revit<год>.txt`) при первом запуске переносятся в профиль «Основной». Если для версии Rhino профилей нет, они копируются из папки надстройки другой версии Revit, иначе создаётся пустой «Основной». |
 | `disabled-plugins.txt` (в `Addins\RIR_PluginManager\`) | Общий для всех версий Revit список отключённых файлов (см. «Список отключённых файлов»). |
 | `folders.txt` | Необязательно. Дополнительные папки с плагинами, по одной на строку. |
+| `gh-session-<номер процесса>.txt` | Запись загрузки Grasshopper и ошибок в коде плагинов в текущем запуске Revit; удаляется при штатном закрытии (см. «Если Revit упал»). |
+| `crash-suspects.txt` | Плагины, на которых Revit падал при загрузке или открытии Grasshopper. |
+| `last-crash.txt` | Запись загрузки из последнего аварийного запуска — для разбора вручную. |
 | `logs\log_<дата>_<время>.txt` | Лог каждого запуска Revit; хранятся 5 последних. |
 
 Сканируются папки `%APPDATA%\Grasshopper\Libraries` (общая для всех версий Rhino), `%APPDATA%\McNeel\Rhinoceros\packages\<версия Rhino>.0` и папки из `folders.txt`.

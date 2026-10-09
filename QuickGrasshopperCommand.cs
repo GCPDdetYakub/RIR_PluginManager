@@ -18,6 +18,33 @@ namespace RIR_PluginManager
                 if (!PluginStore.GrasshopperPluginsLoaded())
                 {
                     var profile = PluginStore.LoadProfile();
+
+                    // Включены плагины, на которых Revit уже падал при загрузке или открытии Grasshopper (маркер падения)
+                    var present = new System.Collections.Generic.HashSet<string>(
+                        System.Linq.Enumerable.Select(PluginStore.Scan(), g => g.Key), StringComparer.OrdinalIgnoreCase);
+                    var suspects = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(
+                        CrashMarker.EnabledSuspects(profile.Disabled), s => present.Contains(s.Key)));
+                    if (suspects.Count > 0)
+                    {
+                        var td = new TaskDialog("RIR_PluginManager")
+                        {
+                            MainInstruction = "На этих плагинах Revit уже падал при загрузке или открытии Grasshopper",
+                            MainContent = CrashMarker.List(suspects),
+                            CommonButtons = TaskDialogCommonButtons.Cancel
+                        };
+                        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Отключить их и запустить Grasshopper",
+                            $"Они будут отключены в профиле «{profile.Name}».");
+                        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Запустить как есть");
+                        var answer = td.Show();
+                        if (answer == TaskDialogResult.CommandLink1)
+                        {
+                            foreach (var s in suspects) profile.Disabled.Add(s.Key);
+                            PluginStore.SaveProfile(profile);
+                            PluginStore.Log("Quick: отключены плагины, на которых падал Revit: " + CrashMarker.List(suspects));
+                        }
+                        else if (answer != TaskDialogResult.CommandLink2) return Result.Cancelled;
+                    }
+
                     var errors = PluginStore.Apply(profile, out int moved);
                     PluginStore.Log($"Quick: профиль «{profile.Name}» применён, отключено файлов: {moved}");
                     SharedLibPreloader.Run("кнопка Grasshopper (профиль)");

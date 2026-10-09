@@ -47,6 +47,8 @@ namespace RIR_PluginManager
         string _profileName;
         HashSet<string> _savedDisabled;
         bool _switchingProfile;
+        // Плагины, на которых Revit уже падал при загрузке или открытии Grasshopper (маркер падения), по ключу группы
+        readonly Dictionary<string, CrashMarker.Suspect> _suspects = CrashMarker.SuspectsForCurrentRhino();
 
         public NextAction Next { get; private set; } = NextAction.None;
 
@@ -228,7 +230,7 @@ namespace RIR_PluginManager
                 var label = new TextBlock
                 {
                     VerticalAlignment = VerticalAlignment.Center,
-                    Text = $"{g.Name}    [{g.Source}, файлов: {g.Files.Count}" + DisabledNote(g) + "]"
+                    Text = $"{g.Name}    [{g.Source}, файлов: {g.Files.Count}" + DisabledNote(g) + "]" + SuspectNote(g)
                 };
                 // Галочка отдельно от текста: клик по квадрату включает/выключает плагин,
                 // клик по строке выделяет её и показывает замечания справа.
@@ -559,6 +561,9 @@ namespace RIR_PluginManager
             var sb = new StringBuilder();
             sb.AppendLine(g.Name);
             sb.AppendLine($"Источник: {g.Source}" + DisabledNote(g));
+            if (_suspects.TryGetValue(g.Key, out var crash))
+                sb.AppendLine($"⚠ На этом плагине Revit упал при загрузке или открытии Grasshopper {crash.WhenUtc.ToLocalTime():dd.MM.yyyy HH:mm}. " +
+                              "Пометка снимется после запуска Grasshopper с этим плагином без сбоя.");
             if (g.Folder != null) sb.AppendLine("Папка: " + g.Folder);
             sb.AppendLine();
 
@@ -685,6 +690,10 @@ namespace RIR_PluginManager
                 MessageBox.Show(this, ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
+
+        /// "  ⚠ падение 09.10" — на плагине уже падал Revit (маркер падения).
+        string SuspectNote(PluginGroup g) =>
+            _suspects.TryGetValue(g.Key, out var s) ? $"   ⚠ падение {s.WhenUtc.ToLocalTime():dd.MM}" : "";
 
         /// ", сейчас отключён" / ", отключён в Revit 2027" (другим работающим Revit) / "".
         static string DisabledNote(PluginGroup g) =>
@@ -878,6 +887,26 @@ namespace RIR_PluginManager
 
         void Finish(NextAction next)
         {
+            // Включены плагины, на которых Revit уже падал при загрузке или открытии Grasshopper — предупредить
+            if (!_ghLoaded)
+            {
+                var enabled = new HashSet<string>(_rows.Where(r => r.Box.IsChecked == true).Select(r => r.Group.Key),
+                                                  StringComparer.OrdinalIgnoreCase);
+                var risky = _suspects.Values.Where(s => enabled.Contains(s.Key)).ToList();
+                if (risky.Count > 0)
+                {
+                    var answer = MessageBox.Show(this,
+                        "На этих плагинах Revit уже падал при загрузке или открытии Grasshopper:\n\n" + CrashMarker.List(risky) +
+                        "\n\nОтключить их и продолжить?\n\n" +
+                        "Да — отключить и продолжить\nНет — продолжить как есть\nОтмена — вернуться к списку",
+                        Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                    if (answer == MessageBoxResult.Cancel) return;
+                    if (answer == MessageBoxResult.Yes)
+                        foreach (var r in _rows.Where(r => risky.Any(s => string.Equals(s.Key, r.Group.Key, StringComparison.OrdinalIgnoreCase))))
+                            r.Box.IsChecked = false;
+                }
+            }
+
             // Настройки читаются с диска, чтобы сохранить активные профили других версий Rhino
             var profile = PluginStore.LoadProfile();
             profile.AutoApply = _autoApply.IsChecked == true;
