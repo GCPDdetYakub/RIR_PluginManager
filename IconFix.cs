@@ -23,7 +23,7 @@ namespace RIR_PluginManager
     public static class IconFix
     {
         public static bool Active { get; private set; }
-        public static string Status { get; private set; } = "не запускался";
+        public static string Status { get; private set; } = L.T("не запускался", "not started");
 
         static int _restored, _failed;
         static readonly ConcurrentDictionary<string, Recovered> _cache = new ConcurrentDictionary<string, Recovered>();
@@ -76,20 +76,20 @@ namespace RIR_PluginManager
                 }
 
                 Active = true;
-                Status = "работает";
-                PluginStore.Log("IconFix: перехват ResourceManager.GetObject установлен" +
-                                (inner != null ? " (внутренний метод)" : " (публичные методы)"));
+                Status = L.T("работает", "active");
+                PluginStore.Log(L.T("IconFix: перехват ResourceManager.GetObject установлен", "IconFix: ResourceManager.GetObject hook installed") +
+                                (inner != null ? L.T(" (внутренний метод)", " (internal method)") : L.T(" (публичные методы)", " (public methods)")));
             }
             catch (Exception ex)
             {
                 Active = false;
-                Status = "не установлен: " + ex.Message;
-                PluginStore.Log("IconFix не установлен: " + ex);
+                Status = L.T("не установлен: ", "not installed: ") + ex.Message;
+                PluginStore.Log(L.T("IconFix не установлен: ", "IconFix not installed: ") + ex);
             }
         }
 
         public static string Summary() =>
-            $"IconFix: восстановлено ресурсов {_restored}, не удалось {_failed}";
+            L.T($"IconFix: восстановлено ресурсов {_restored}, не удалось {_failed}", $"IconFix: resources restored {_restored}, failed {_failed}");
 
         // Имена параметров Harmony: __exception, __instance, __args, __result
         static Exception Finalizer(Exception __exception, ResourceManager __instance, object[] __args, ref object __result)
@@ -162,7 +162,8 @@ namespace RIR_PluginManager
             }
             catch (Exception ex)
             {
-                PluginStore.Log($"IconFix: не удалось разобрать ресурс {name} в {asm.GetName().Name}: {ex.Message}");
+                PluginStore.Log(L.T($"IconFix: не удалось разобрать ресурс {name} в {asm.GetName().Name}: {ex.Message}",
+                                    $"IconFix: could not parse resource {name} in {asm.GetName().Name}: {ex.Message}"));
                 return null;
             }
         }
@@ -181,7 +182,7 @@ namespace RIR_PluginManager
     public static class IconFix
     {
         public static bool Active => false;
-        public static string Status => "не требуется на .NET Framework";
+        public static string Status => L.T("не требуется на .NET Framework", "not needed on .NET Framework");
         public static bool IsSupportedType(string resourceTypeName) => false;
         public static void Install() { }
         public static string Summary() => "";

@@ -201,7 +201,8 @@ namespace RIR_PluginManager
                     {
                         if (File.Exists(off))
                         {
-                            errors.Add($"{f}: уже существует {System.IO.Path.GetFileName(off)}, файл не тронут");
+                            errors.Add(L.T($"{f}: уже существует {System.IO.Path.GetFileName(off)}, файл не тронут",
+                                            $"{f}: {System.IO.Path.GetFileName(off)} already exists, file left untouched"));
                             continue;
                         }
                         var entry = Own(f);
@@ -223,7 +224,8 @@ namespace RIR_PluginManager
                 }
                 return n;
             }, out var lockFailed);
-            if (lockFailed) errors.Add("Журнал отключённых файлов занят другим процессом, плагины не отключены");
+            if (lockFailed) errors.Add(L.T("Журнал отключённых файлов занят другим процессом, плагины не отключены",
+                                           "The list of disabled files is locked by another process, plugins were not disabled"));
             return moved;
         }
 
@@ -247,7 +249,8 @@ namespace RIR_PluginManager
                 }
                 return 0;
             }, out var lockFailed);
-            if (lockFailed) errors.Add("Журнал отключённых файлов занят другим процессом, имена не возвращены (повторится позже)");
+            if (lockFailed) errors.Add(L.T("Журнал отключённых файлов занят другим процессом, имена не возвращены (повторится позже)",
+                                           "The list of disabled files is locked by another process, names were not restored (will retry later)"));
             else HasOwnEntries = false;
             return errors;
         }
@@ -269,7 +272,8 @@ namespace RIR_PluginManager
                 }
                 return 0;
             }, out var lockFailed);
-            if (lockFailed) errors.Add("Журнал отключённых файлов занят другим процессом, восстановление после сбоя пропущено");
+            if (lockFailed) errors.Add(L.T("Журнал отключённых файлов занят другим процессом, восстановление после сбоя пропущено",
+                                           "The list of disabled files is locked by another process, recovery after a crash skipped"));
             return errors;
         }
 
@@ -285,13 +289,14 @@ namespace RIR_PluginManager
             };
             if (File.Exists(e.Path))
             {
-                errors.Add($"{e.Path}: оригинал уже существует, {System.IO.Path.GetFileName(off)} оставлен как есть");
+                errors.Add(L.T($"{e.Path}: оригинал уже существует, {System.IO.Path.GetFileName(off)} оставлен как есть",
+                                $"{e.Path}: the original already exists, {System.IO.Path.GetFileName(off)} left as is"));
                 return left;
             }
             try { File.Move(off, e.Path); return null; }
             catch (Exception ex)
             {
-                errors.Add($"{e.Path}: не удалось восстановить: {ex.Message}");
+                errors.Add(L.T($"{e.Path}: не удалось восстановить: {ex.Message}", $"{e.Path}: could not restore: {ex.Message}"));
                 return left;
             }
         }
@@ -346,7 +351,7 @@ namespace RIR_PluginManager
                 if (!File.Exists(file)) continue;
                 bool busy = year == RevitVersion ? false                         // свой год: прежняя версия здесь не запущена
                           : running.Contains("?") || running.Contains(year) || (year == "?" && running.Count > 0);
-                if (busy) { log($"Старый журнал {file} не перенесён: запущен Revit {year}"); continue; }
+                if (busy) { log(L.T($"Старый журнал {file} не перенесён: запущен Revit {year}", $"Old journal {file} not migrated: Revit {year} is running")); continue; }
 
                 Locked(entries =>
                 {
@@ -364,9 +369,9 @@ namespace RIR_PluginManager
                     }
                     return 0;
                 }, out var lockFailed);
-                if (lockFailed) { log($"Старый журнал {file} не перенесён: журнал занят"); continue; }
-                try { File.Delete(file); } catch (Exception ex) { log($"Старый журнал {file} не удалён: {ex.Message}"); }
-                log($"Старый журнал {file} перенесён в {FileName}");
+                if (lockFailed) { log(L.T($"Старый журнал {file} не перенесён: журнал занят", $"Old journal {file} not migrated: the list is locked")); continue; }
+                try { File.Delete(file); } catch (Exception ex) { log(L.T($"Старый журнал {file} не удалён: {ex.Message}", $"Old journal {file} not deleted: {ex.Message}")); }
+                log(L.T($"Старый журнал {file} перенесён в {FileName}", $"Old journal {file} migrated to {FileName}"));
             }
             return imported;
         }

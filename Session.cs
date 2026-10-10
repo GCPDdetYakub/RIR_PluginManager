@@ -28,7 +28,7 @@ namespace RIR_PluginManager
         public static int RhinoMajorOrDefault => RhinoMajor > 0 ? RhinoMajor : 8;
 
         /// Откуда взята версия Rhino (для лога и заголовка окна).
-        public static string RhinoSource { get { Detect(); return _rhinoSource ?? "не определена, принята 8"; } }
+        public static string RhinoSource { get { Detect(); return _rhinoSource ?? L.T("не определена, принята 8", "not detected, assumed 8"); } }
 
         /// Вызывается при загрузке RhinoCommon: это точное значение.
         public static void SetRhinoFromRhinoCommon(Version v)
@@ -71,7 +71,7 @@ namespace RIR_PluginManager
                     if (major > 0)
                     {
                         _rhino = major;
-                        _rhinoSource = "папка Rhino.Inside R" + major;
+                        _rhinoSource = L.T("папка Rhino.Inside R", "Rhino.Inside folder R") + major;
                         return;
                     }
                 }

@@ -93,7 +93,8 @@ namespace RIR_PluginManager
                         issues.Add(new Issue
                         {
                             Level = IssueLevel.Error,
-                            Text = $"{Path.GetFileName(f)}: Python-компоненты (.ghpy, IronPython 2.7) на .NET {ctx.RuntimeMajor} не загружаются, Grasshopper покажет окно ошибки"
+                            Text = L.T($"{Path.GetFileName(f)}: Python-компоненты (.ghpy, IronPython 2.7) на .NET {ctx.RuntimeMajor} не загружаются, Grasshopper покажет окно ошибки",
+                                       $"{Path.GetFileName(f)}: Python components (.ghpy, IronPython 2.7) do not load on .NET {ctx.RuntimeMajor}, Grasshopper will show an error window")
                         });
                         continue;
                     }
@@ -121,8 +122,8 @@ namespace RIR_PluginManager
                         issues.Add(new Issue
                         {
                             Level = IssueLevel.Warning,
-                            Text = $"{facts.AsmName} {facts.AsmVersion}: в процессе Revit уже загружена версия {lv}, " +
-                                   "более новая копия не загрузится, плагин может не работать"
+                            Text = L.T($"{facts.AsmName} {facts.AsmVersion}: в процессе Revit уже загружена версия {lv}, более новая копия не загрузится, плагин может не работать",
+                                       $"{facts.AsmName} {facts.AsmVersion}: version {lv} is already loaded in the Revit process, the newer copy will not load, the plugin may not work")
                         });
                     }
                 }
@@ -135,7 +136,7 @@ namespace RIR_PluginManager
                 if (!facts.IsManaged || facts.AsmName == null) continue;
                 if (!owners.TryGetValue(facts.AsmName, out var list))
                     owners[facts.AsmName] = list = new List<(Version, string, string, bool)>();
-                list.Add((facts.AsmVersion, "", "Libraries (корень)", false));
+                list.Add((facts.AsmVersion, "", L.T("Libraries (корень)", "Libraries (root)"), false));
             }
 
             // Конфликты версий и дубликаты.
@@ -163,7 +164,8 @@ namespace RIR_PluginManager
                         result[g.Key].Add(new Issue
                         {
                             Level = IssueLevel.Warning,
-                            Text = $"{kv.Key}: этот плагин установлен ещё раз ({string.Join(", ", others.Where(e => e.isGha).Select(e => e.ownerName).Distinct())})"
+                            Text = L.T("{0}: этот плагин установлен ещё раз ({1})", "{0}: this plugin is installed once more ({1})")
+                                   .Replace("{0}", kv.Key).Replace("{1}", string.Join(", ", others.Where(e => e.isGha).Select(e => e.ownerName).Distinct()))
                         });
                         continue;
                     }
@@ -178,9 +180,10 @@ namespace RIR_PluginManager
                         result[g.Key].Add(new Issue
                         {
                             Level = major ? IssueLevel.Warning : IssueLevel.Info,
-                            Text = $"{kv.Key} {myVer}: будет использоваться версия {pre.Version} из {pre.OwnerName} (предзагрузка общих библиотек)" +
-                                   (major ? ". Основной номер версии отличается — возможна несовместимость; " +
-                                            $"при проблемах добавьте в settings-revit{PluginStore.RevitVersion}.txt строку preload_exclude={kv.Key}" : "")
+                            Text = L.T($"{kv.Key} {myVer}: будет использоваться версия {pre.Version} из {pre.OwnerName} (предзагрузка общих библиотек)",
+                                       $"{kv.Key} {myVer}: version {pre.Version} from {pre.OwnerName} will be used (shared library preload)") +
+                                   (major ? L.T($". Основной номер версии отличается — возможна несовместимость; при проблемах добавьте в settings-revit{PluginStore.RevitVersion}.txt строку preload_exclude={kv.Key}",
+                                                $". The major version differs, incompatibility is possible; if there are problems, add the line preload_exclude={kv.Key} to settings-revit{PluginStore.RevitVersion}.txt") : "")
                         });
                         continue;
                     }
@@ -194,8 +197,9 @@ namespace RIR_PluginManager
                     result[g.Key].Add(new Issue
                     {
                         Level = IssueLevel.Warning,
-                        Text = $"{kv.Key} {myVer}: плагину нужна эта версия, а у {string.Join(", ", older)} она старше. " +
-                               "Если старая загрузится раньше, этот плагин может не загрузиться"
+                        Text = L.T("{0} {1}: плагину нужна эта версия, а у {2} она старше. Если старая загрузится раньше, этот плагин может не загрузиться",
+                                   "{0} {1}: the plugin needs this version, but {2} has an older one. If the older one loads first, this plugin may fail to load")
+                               .Replace("{0}", kv.Key).Replace("{1}", myVer.ToString()).Replace("{2}", string.Join(", ", older))
                     });
                 }
             }
@@ -242,7 +246,7 @@ namespace RIR_PluginManager
             var name = Path.GetFileName(file);
             if (facts.Error != null)
             {
-                issues.Add(new Issue { Level = IssueLevel.Info, Text = $"{name}: не удалось проверить ({facts.Error})" });
+                issues.Add(new Issue { Level = IssueLevel.Info, Text = L.T($"{name}: не удалось проверить ({facts.Error})", $"{name}: could not check ({facts.Error})") });
                 return;
             }
             if (!facts.IsManaged) return;
@@ -255,10 +259,10 @@ namespace RIR_PluginManager
                 {
                     Level = dependency ? IssueLevel.Warning : IssueLevel.Error,
                     Text = dependency
-                        ? $"{name}: библиотека собрана под .NET {facts.CoreRuntimeMajor}, а Rhino в этой версии Revit работает на {host}: " +
-                          "функции плагина, которые её используют, работать не будут"
-                        : $"{name}: собран под .NET {facts.CoreRuntimeMajor}, а Rhino в этой версии Revit работает на {host}: " +
-                          "плагин не загрузится или не будет работать. Если он выполняет код при открытии Grasshopper, может уронить Revit"
+                        ? L.T($"{name}: библиотека собрана под .NET {facts.CoreRuntimeMajor}, а Rhino в этой версии Revit работает на {host}: функции плагина, которые её используют, работать не будут",
+                              $"{name}: the library is built for .NET {facts.CoreRuntimeMajor}, but Rhino in this Revit version runs on {host}: plugin features that use it will not work")
+                        : L.T($"{name}: собран под .NET {facts.CoreRuntimeMajor}, а Rhino в этой версии Revit работает на {host}: плагин не загрузится или не будет работать. Если он выполняет код при открытии Grasshopper, может уронить Revit",
+                              $"{name}: built for .NET {facts.CoreRuntimeMajor}, but Rhino in this Revit version runs on {host}: the plugin will not load or will not work. If it runs code when Grasshopper opens, it can crash Revit")
                 });
             }
 
@@ -267,8 +271,8 @@ namespace RIR_PluginManager
                 issues.Add(new Issue
                 {
                     Level = IssueLevel.Error,
-                    Text = $"{name}: собран для Rhino {facts.RhinoSdkMajor} (RhinoCommon/Grasshopper {facts.RhinoSdkMajor}), " +
-                           $"а Rhino.Inside работает с Rhino {ctx.RhinoMajor}: плагин не загрузится"
+                    Text = L.T($"{name}: собран для Rhino {facts.RhinoSdkMajor} (RhinoCommon/Grasshopper {facts.RhinoSdkMajor}), а Rhino.Inside работает с Rhino {ctx.RhinoMajor}: плагин не загрузится",
+                               $"{name}: built for Rhino {facts.RhinoSdkMajor} (RhinoCommon/Grasshopper {facts.RhinoSdkMajor}), but Rhino.Inside runs Rhino {ctx.RhinoMajor}: the plugin will not load")
                 });
 
             // Остальные критерии касаются только .NET 8/10 (Revit 2025+)
@@ -282,7 +286,7 @@ namespace RIR_PluginManager
                     issues.Add(new Issue
                     {
                         Level = IssueLevel.Warning,
-                        Text = $"{name}: зависит от IronPython, на .NET {ctx.RuntimeMajor} Python-часть, скорее всего, не работает"
+                        Text = L.T($"{name}: зависит от IronPython, на .NET {ctx.RuntimeMajor} Python-часть, скорее всего, не работает", $"{name}: depends on IronPython, the Python part most likely does not work on .NET {ctx.RuntimeMajor}")
                     });
                 return;
             }
@@ -291,15 +295,15 @@ namespace RIR_PluginManager
                 issues.Add(new Issue
                 {
                     Level = IssueLevel.Warning,
-                    Text = $"{name}: код плагина использует BinaryFormatter (удалён в .NET 9+): " +
-                           "функции, которые к нему обращаются, работать не будут"
+                    Text = L.T($"{name}: код плагина использует BinaryFormatter (удалён в .NET 9+): функции, которые к нему обращаются, работать не будут",
+                               $"{name}: the plugin code uses BinaryFormatter (removed in .NET 9+): features that use it will not work")
                 });
 
             if (facts.UsesIronPython && ctx.RuntimeMajor >= 9)
                 issues.Add(new Issue
                 {
                     Level = IssueLevel.Warning,
-                    Text = $"{name}: зависит от IronPython, на .NET {ctx.RuntimeMajor} Python-часть, скорее всего, не работает"
+                    Text = L.T($"{name}: зависит от IronPython, на .NET {ctx.RuntimeMajor} Python-часть, скорее всего, не работает", $"{name}: depends on IronPython, the Python part most likely does not work on .NET {ctx.RuntimeMajor}")
                 });
 
             if (ctx.RuntimeMajor < 9)
@@ -312,9 +316,8 @@ namespace RIR_PluginManager
                     issues.Add(new Issue
                     {
                         Level = IssueLevel.Warning,
-                        Text = $"{name}: ресурсов в формате BinaryFormatter: {facts.SerializedResources} (обычно иконки). " +
-                               "Не загрузятся; при запуске GH штатной кнопкой возможен краш Revit. " +
-                               "Включите восстановление иконок в окне надстройки"
+                        Text = L.T($"{name}: ресурсов в формате BinaryFormatter: {facts.SerializedResources} (обычно иконки). Не загрузятся; при запуске GH штатной кнопкой возможен краш Revit. Включите восстановление иконок в окне надстройки",
+                                   $"{name}: resources in BinaryFormatter format: {facts.SerializedResources} (usually icons). They will not load; starting GH with the standard button may crash Revit. Turn on icon restoring in the add-in window")
                     });
             }
             else if (facts.UnsupportedResources > 0)
@@ -323,7 +326,8 @@ namespace RIR_PluginManager
                 issues.Add(new Issue
                 {
                     Level = IssueLevel.Warning,
-                    Text = $"{name}: ресурсов в формате BinaryFormatter, которые не восстанавливаются: {facts.UnsupportedResources} " +
+                    Text = L.T($"{name}: ресурсов в формате BinaryFormatter, которые не восстанавливаются: {facts.UnsupportedResources} ",
+                               $"{name}: BinaryFormatter resources that cannot be restored: {facts.UnsupportedResources} ") +
                            $"({string.Join(", ", facts.UnsupportedTypes)})"
                 });
             }
@@ -331,9 +335,9 @@ namespace RIR_PluginManager
             if (!dependency)
             {
                 if (facts.TargetFramework == null)
-                    issues.Add(new Issue { Level = IssueLevel.Info, Text = $"{name}: целевой рантайм не указан (очень старая сборка)" });
+                    issues.Add(new Issue { Level = IssueLevel.Info, Text = L.T($"{name}: целевой рантайм не указан (очень старая сборка)", $"{name}: target runtime not specified (very old build)") });
                 else if (facts.TargetFramework.StartsWith(".NETFramework", StringComparison.OrdinalIgnoreCase))
-                    issues.Add(new Issue { Level = IssueLevel.Info, Text = $"{name}: собран под {facts.TargetFramework}, обычно работает, но не гарантированно" });
+                    issues.Add(new Issue { Level = IssueLevel.Info, Text = L.T($"{name}: собран под {facts.TargetFramework}, обычно работает, но не гарантированно", $"{name}: built for {facts.TargetFramework}, usually works, but not guaranteed") });
             }
         }
 

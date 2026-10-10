@@ -18,11 +18,11 @@ namespace RIR_PluginManager
                 .FirstOrDefault(a => { try { return a.GetName().Name == "RhinoCommon"; } catch { return false; } });
             if (rc != null)
             {
-                Run(rc.GetName().Version, "Rhino уже загружен");
+                Run(rc.GetName().Version, L.T("Rhino уже загружен", "Rhino already loaded"));
                 return;
             }
             AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
-            PluginStore.Log("Ожидание запуска Rhino (применение профиля и предзагрузка библиотек)");
+            PluginStore.Log(L.T("Ожидание запуска Rhino (применение профиля и предзагрузка библиотек)", "Waiting for Rhino to start (profile and library preload)"));
         }
 
         static void OnAssemblyLoad(object sender, AssemblyLoadEventArgs args)
@@ -32,11 +32,11 @@ namespace RIR_PluginManager
                 var name = args.LoadedAssembly.GetName();
                 if (!string.Equals(name.Name, "RhinoCommon", StringComparison.OrdinalIgnoreCase)) return;
                 AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
-                Run(name.Version, "запуск Rhino");
+                Run(name.Version, L.T("запуск Rhino", "Rhino start"));
             }
             catch (Exception ex)
             {
-                PluginStore.Log("Запуск Rhino: ошибка " + ex.Message);
+                PluginStore.Log(L.T("Запуск Rhino: ошибка ", "Rhino start: error ") + ex.Message);
             }
         }
 
@@ -58,11 +58,13 @@ namespace RIR_PluginManager
                 var profile = PluginStore.LoadProfile();
                 var suspects = CrashMarker.EnabledSuspects(profile.Disabled);
                 if (suspects.Count > 0)
-                    PluginStore.Log("Внимание: включены плагины, на которых Revit уже падал при загрузке или открытии Grasshopper: " + CrashMarker.List(suspects));
+                    PluginStore.Log(L.T("Внимание: включены плагины, на которых Revit уже падал при загрузке или открытии Grasshopper: ",
+                                        "Warning: enabled plugins on which Revit already crashed while loading or opening Grasshopper: ") + CrashMarker.List(suspects));
                 if (profile.AutoApply)
                 {
                     var errors = PluginStore.Apply(profile, out int moved);
-                    PluginStore.Log($"Профиль «{profile.Name}» применён автоматически при запуске Rhino, отключено файлов: {moved}");
+                    PluginStore.Log(L.T($"Профиль «{profile.Name}» применён автоматически при запуске Rhino, отключено файлов: {moved}",
+                                        $"Profile \"{profile.Name}\" applied automatically at Rhino start, files disabled: {moved}"));
                     foreach (var e in errors) PluginStore.Log("AutoApply: " + e);
                 }
 
@@ -70,7 +72,7 @@ namespace RIR_PluginManager
             }
             catch (Exception ex)
             {
-                PluginStore.Log("Запуск Rhino: ошибка " + ex);
+                PluginStore.Log(L.T("Запуск Rhino: ошибка ", "Rhino start: error ") + ex);
             }
         }
     }

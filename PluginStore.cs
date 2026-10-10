@@ -213,7 +213,7 @@ namespace RIR_PluginManager
 
             var files = Scan().Where(g => profile.Disabled.Contains(g.Key)).SelectMany(g => g.Files).ToList();
             moved = DisabledJournal.Disable(files, errors);
-            Log($"Apply: отключено файлов: {moved}, ошибок: {errors.Count}");
+            Log(L.T($"Apply: отключено файлов: {moved}, ошибок: {errors.Count}", $"Apply: files disabled: {moved}, errors: {errors.Count}"));
             return errors;
         }
 
@@ -239,9 +239,10 @@ namespace RIR_PluginManager
                 DisabledJournal.RevitVersion = RevitVersion;
                 DisabledJournal.ImportLegacy(new[] { Path.Combine(LegacyDir, "renamed.txt") }, Log);
             }
-            catch (Exception ex) { Log("Перенос старых журналов: " + ex.Message); }
+            catch (Exception ex) { Log(L.T("Перенос старых журналов: ", "Migrating old journals: ") + ex.Message); }
             var errors = DisabledJournal.RestoreOrphans();
-            Log($"Единый журнал: {DisabledJournal.FilePath}; восстановление после сбоя, ошибок: {errors.Count}");
+            Log(L.T($"Единый журнал: {DisabledJournal.FilePath}; восстановление после сбоя, ошибок: {errors.Count}",
+                     $"Shared journal: {DisabledJournal.FilePath}; recovery after a crash, errors: {errors.Count}"));
             return errors;
         }
 
@@ -251,7 +252,8 @@ namespace RIR_PluginManager
         //   profiles\rhino7\<имя>.txt, profiles\rhino8\<имя>.txt ...
         // Какой профиль активен для каждой версии Rhino, записано в настройках (profile_rhino8=Имя).
 
-        public const string DefaultProfileName = "Основной";
+        /// Имя профиля, создаваемого по умолчанию (на языке интерфейса). Уже существующие профили не переименовываются.
+        public static string DefaultProfileName => L.T("Основной", "Main");
         public const int MaxProfileNameLength = 60;
         public static string ProfilesRoot => Path.Combine(DataDir, "profiles");
         public static string ProfilesDir => ProfilesDirFor(DataDir, Session.RhinoMajorOrDefault);
@@ -281,7 +283,8 @@ namespace RIR_PluginManager
             var dir = Path.GetFileName(Path.GetDirectoryName(path) ?? "");            // rhinoN
             int.TryParse(dir.StartsWith("rhino", StringComparison.OrdinalIgnoreCase) ? dir.Substring(5) : "", out var rhino);
             WriteDisabled(p.Disabled, path, Path.GetFileNameWithoutExtension(path), rhino);
-            Log($"Плагин {key} отключён в профиле {Path.GetFileNameWithoutExtension(path)} (Rhino {rhino})");
+            Log(L.T($"Плагин {key} отключён в профиле {Path.GetFileNameWithoutExtension(path)} (Rhino {rhino})",
+                     $"Plugin {key} disabled in profile {Path.GetFileNameWithoutExtension(path)} (Rhino {rhino})"));
         }
 
         /// Имена профилей текущей версии Rhino (по алфавиту).
@@ -326,18 +329,18 @@ namespace RIR_PluginManager
         public static string ValidateProfileName(string name, string renaming = null)
         {
             name = (name ?? "").Trim();
-            if (name.Length == 0) return "Введите имя профиля.";
-            if (name.Length > MaxProfileNameLength) return $"Имя длиннее {MaxProfileNameLength} символов.";
+            if (name.Length == 0) return L.T("Введите имя профиля.", "Enter a profile name.");
+            if (name.Length > MaxProfileNameLength) return L.T($"Имя длиннее {MaxProfileNameLength} символов.", $"The name is longer than {MaxProfileNameLength} characters.");
             if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-                return "Имя не может содержать символы \\ / : * ? \" < > |";
-            if (name.EndsWith(".")) return "Имя не может заканчиваться точкой.";
+                return L.T("Имя не может содержать символы \\ / : * ? \" < > |", "The name cannot contain \\ / : * ? \" < > |");
+            if (name.EndsWith(".")) return L.T("Имя не может заканчиваться точкой.", "The name cannot end with a dot.");
             var upper = name.ToUpperInvariant();
             if (new[] { "CON", "PRN", "AUX", "NUL" }.Contains(upper) ||
                 ((upper.StartsWith("COM") || upper.StartsWith("LPT")) && upper.Length == 4 && char.IsDigit(upper[3])))
-                return "Это имя зарезервировано Windows.";
+                return L.T("Это имя зарезервировано Windows.", "This name is reserved by Windows.");
             bool sameAsOld = renaming != null && string.Equals(name, renaming, StringComparison.OrdinalIgnoreCase);
             if (!sameAsOld && ListProfiles().Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
-                return "Профиль с таким именем уже есть.";
+                return L.T("Профиль с таким именем уже есть.", "A profile with this name already exists.");
             return null;
         }
 
@@ -347,7 +350,7 @@ namespace RIR_PluginManager
             var err = ValidateProfileName(name);
             if (err != null) throw new InvalidOperationException(err);
             SaveDisabled(name, disabled);
-            Log($"Профиль «{name}» создан (Rhino {Session.RhinoMajorOrDefault})");
+            Log(L.T($"Профиль «{name}» создан (Rhino {Session.RhinoMajorOrDefault})", $"Profile \"{name}\" created (Rhino {Session.RhinoMajorOrDefault})"));
         }
 
         public static void RenameProfile(string oldName, string newName)
@@ -378,14 +381,14 @@ namespace RIR_PluginManager
                 s.ActiveProfiles[ActiveKey] = newName;
                 WriteSettings(s);
             }
-            Log($"Профиль «{oldName}» переименован в «{newName}» (Rhino {Session.RhinoMajorOrDefault})");
+            Log(L.T($"Профиль «{oldName}» переименован в «{newName}» (Rhino {Session.RhinoMajorOrDefault})", $"Profile \"{oldName}\" renamed to \"{newName}\" (Rhino {Session.RhinoMajorOrDefault})"));
         }
 
         /// Удаляет профиль. Последний профиль удалить нельзя.
         public static void DeleteProfile(string name)
         {
             var all = ListProfiles();
-            if (all.Count <= 1) throw new InvalidOperationException("Нельзя удалить единственный профиль.");
+            if (all.Count <= 1) throw new InvalidOperationException(L.T("Нельзя удалить единственный профиль.", "The only profile cannot be deleted."));
             File.Delete(ProfileFile(name));
 
             var s = ReadSettings();
@@ -395,7 +398,7 @@ namespace RIR_PluginManager
                 s.ActiveProfiles[ActiveKey] = ListProfiles().First();
                 WriteSettings(s);
             }
-            Log($"Профиль «{name}» удалён (Rhino {Session.RhinoMajorOrDefault})");
+            Log(L.T($"Профиль «{name}» удалён (Rhino {Session.RhinoMajorOrDefault})", $"Profile \"{name}\" deleted (Rhino {Session.RhinoMajorOrDefault})"));
         }
 
         static Profile ReadSettings()
@@ -449,12 +452,17 @@ namespace RIR_PluginManager
             Directory.CreateDirectory(DataDir);
             var lines = new List<string>
             {
-                $"# Настройки RIR_PluginManager для Revit {RevitVersion}",
-                "# autoapply=true      - отключать плагины из профиля автоматически при запуске Rhino",
-                "# iconfix=true        - восстанавливать иконки старых плагинов (только .NET 9+); действует после перезапуска Revit",
-                "# preloadshared=true  - заранее загружать новейшие версии общих библиотек плагинов; действует со следующего запуска Rhino",
-                "# preload_exclude=Имя - не загружать заранее эту библиотеку (можно несколько строк)",
-                "# profile_rhino8=Имя  - активный профиль для Rhino 8 (файл profiles\\rhino8\\Имя.txt)",
+                L.T($"# Настройки RIR_PluginManager для Revit {RevitVersion}", $"# RIR_PluginManager settings for Revit {RevitVersion}"),
+                L.T("# autoapply=true      - отключать плагины из профиля автоматически при запуске Rhino",
+                    "# autoapply=true      - disable the profile's plugins automatically when Rhino starts"),
+                L.T("# iconfix=true        - восстанавливать иконки старых плагинов (только .NET 9+); действует после перезапуска Revit",
+                    "# iconfix=true        - restore icons of old plugins (.NET 9+ only); takes effect after restarting Revit"),
+                L.T("# preloadshared=true  - заранее загружать новейшие версии общих библиотек плагинов; действует со следующего запуска Rhino",
+                    "# preloadshared=true  - preload the newest versions of libraries shared by plugins; takes effect at the next Rhino start"),
+                L.T("# preload_exclude=Имя - не загружать заранее эту библиотеку (можно несколько строк)",
+                    "# preload_exclude=Name - do not preload this library (several lines allowed)"),
+                L.T("# profile_rhino8=Имя  - активный профиль для Rhino 8 (файл profiles\\rhino8\\Имя.txt)",
+                    "# profile_rhino8=Name - active profile for Rhino 8 (file profiles\\rhino8\\Name.txt)"),
                 "autoapply=" + (p.AutoApply ? "true" : "false"),
                 "iconfix=" + (p.IconFix ? "true" : "false"),
                 "preloadshared=" + (p.PreloadShared ? "true" : "false")
@@ -469,8 +477,9 @@ namespace RIR_PluginManager
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             var lines = new List<string>
             {
-                $"# Профиль «{name}»: плагины, которые НЕ загружаются в Rhino.Inside (Revit {RevitVersion}, Rhino {rhino})",
-                "# disabled=Источник|Имя"
+                L.T($"# Профиль «{name}»: плагины, которые НЕ загружаются в Rhino.Inside (Revit {RevitVersion}, Rhino {rhino})",
+                    $"# Profile \"{name}\": plugins that are NOT loaded in Rhino.Inside (Revit {RevitVersion}, Rhino {rhino})"),
+                L.T("# disabled=Источник|Имя", "# disabled=Source|Name")
             };
             lines.AddRange(disabled.Distinct(StringComparer.OrdinalIgnoreCase)
                                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Select(x => "disabled=" + x));
@@ -503,7 +512,8 @@ namespace RIR_PluginManager
                     WriteSettings(old);
                     if (!File.Exists(rhino8)) WriteDisabled(old.Disabled, rhino8, DefaultProfileName, 8);
                     File.Delete(legacy);
-                    Log($"Профиль {Path.GetFileName(legacy)} разделён на {SettingsName} и profiles\\rhino8\\{DefaultProfileName}.txt");
+                    Log(L.T($"Профиль {Path.GetFileName(legacy)} разделён на {SettingsName} и profiles\\rhino8\\{DefaultProfileName}.txt",
+                             $"Profile {Path.GetFileName(legacy)} split into {SettingsName} and profiles\\rhino8\\{DefaultProfileName}.txt"));
                 }
 
                 // 2. Профили 1.16: profile-revitГГГГ-rhinoN.txt -> profiles\rhinoN\Основной.txt
@@ -521,7 +531,8 @@ namespace RIR_PluginManager
                         var p = new Profile();
                         ReadProfileFile(src, p);
                         WriteDisabled(p.Disabled, Path.Combine(dir, DefaultProfileName + ".txt"), DefaultProfileName, byRhino.Key);
-                        Log($"Профиль {Path.GetFileName(src)} перенесён в profiles\\rhino{byRhino.Key}\\{DefaultProfileName}.txt");
+                        Log(L.T($"Профиль {Path.GetFileName(src)} перенесён в profiles\\rhino{byRhino.Key}\\{DefaultProfileName}.txt",
+                                 $"Profile {Path.GetFileName(src)} moved to profiles\\rhino{byRhino.Key}\\{DefaultProfileName}.txt"));
                     }
                     foreach (var f in byRhino) File.Delete(f);
                 }
@@ -531,7 +542,7 @@ namespace RIR_PluginManager
                 {
                     var other = Directory.GetFiles(DataDir, "settings-revit*.txt")
                                          .OrderByDescending(f => File.GetLastWriteTimeUtc(f)).FirstOrDefault();
-                    if (other != null) { File.Copy(other, SettingsPath); Log($"Настройки скопированы из {Path.GetFileName(other)}"); }
+                    if (other != null) { File.Copy(other, SettingsPath); Log(L.T($"Настройки скопированы из {Path.GetFileName(other)}", $"Settings copied from {Path.GetFileName(other)}")); }
                 }
 
                 // 4. Профили текущей версии Rhino
@@ -540,7 +551,7 @@ namespace RIR_PluginManager
                     if (!CopyProfilesFromOtherRevit())
                     {
                         WriteDisabled(new string[0], ProfileFile(DefaultProfileName), DefaultProfileName, Session.RhinoMajorOrDefault);
-                        Log($"Создан пустой профиль «{DefaultProfileName}» для Rhino {Session.RhinoMajorOrDefault}");
+                        Log(L.T($"Создан пустой профиль «{DefaultProfileName}» для Rhino {Session.RhinoMajorOrDefault}", $"Empty profile \"{DefaultProfileName}\" created for Rhino {Session.RhinoMajorOrDefault}"));
                     }
                 }
             }
@@ -602,7 +613,7 @@ namespace RIR_PluginManager
                 Directory.CreateDirectory(ProfilesDir);
                 foreach (var f in best.files) File.Copy(f, Path.Combine(ProfilesDir, Path.GetFileName(f)));
             }
-            Log($"Профили Rhino {rhino} скопированы из {best.from}");
+            Log(L.T($"Профили Rhino {rhino} скопированы из {best.from}", $"Rhino {rhino} profiles copied from {best.from}"));
             return true;
         }
 
@@ -631,7 +642,7 @@ namespace RIR_PluginManager
                         {
                             Directory.CreateDirectory(DataDir);
                             File.Copy(prof, dst);
-                            Log($"Migrate: профиль {Path.GetFileName(prof)} из {dir}");
+                            Log(L.T($"Migrate: профиль {Path.GetFileName(prof)} из {dir}", $"Migrate: profile {Path.GetFileName(prof)} from {dir}"));
                         }
                     }
 
@@ -644,7 +655,7 @@ namespace RIR_PluginManager
                         var dst = Path.Combine(DataDir, name);
                         if (!File.Exists(dst)) File.Copy(src, dst);
                         File.Delete(src);
-                        Log($"Migrate: {name} из {dir}");
+                        Log(L.T($"Migrate: {name} из {dir}", $"Migrate: {name} from {dir}"));
                     }
                 }
                 catch (Exception ex) { Log($"Migrate {dir}: {ex.Message}"); }
@@ -733,7 +744,7 @@ namespace RIR_PluginManager
                     if (fi.Exists && fi.Length > MaxLogBytes)
                     {
                         _logFull = true;
-                        File.AppendAllText(_sessionLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  Лог достиг 20 МБ, запись остановлена до следующего запуска Revit{Environment.NewLine}");
+                        File.AppendAllText(_sessionLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  " + L.T("Лог достиг 20 МБ, запись остановлена до следующего запуска Revit", "The log reached 20 MB, logging stopped until the next Revit start") + Environment.NewLine);
                         return;
                     }
                     File.AppendAllText(_sessionLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  {message}{Environment.NewLine}");

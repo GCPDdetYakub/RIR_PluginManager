@@ -12,9 +12,18 @@ namespace RIR_PluginManager
         {
             var uiapp = commandData.Application;
 
-            var window = new ManagerWindow();
-            new System.Windows.Interop.WindowInteropHelper(window) { Owner = uiapp.MainWindowHandle };
-            if (window.ShowDialog() != true) return Result.Cancelled;
+            // После смены языка окно закрывается и открывается заново с теми же отметками
+            ManagerWindow window;
+            ManagerWindow.Carry carry = null;
+            while (true)
+            {
+                window = new ManagerWindow(carry);
+                new System.Windows.Interop.WindowInteropHelper(window) { Owner = uiapp.MainWindowHandle };
+                var ok = window.ShowDialog();
+                if (window.Reopen != null) { carry = window.Reopen; continue; }
+                if (ok != true) return Result.Cancelled;
+                break;
+            }
 
             string commandName = window.Next switch
             {
@@ -31,8 +40,9 @@ namespace RIR_PluginManager
                 if (id == null)
                 {
                     TaskDialog.Show("RIR_PluginManager",
-                        "Не найдена команда Rhino.Inside:\n" + commandName +
-                        "\n\nПлагины уже применены, нажмите кнопку Rhino или Grasshopper вручную.");
+                        L.T("Не найдена команда Rhino.Inside:\n", "Rhino.Inside command not found:\n") + commandName +
+                        L.T("\n\nПлагины уже применены, нажмите кнопку Rhino или Grasshopper вручную.",
+                            "\n\nPlugins have been applied; click the Rhino or Grasshopper button manually."));
                     return Result.Succeeded;
                 }
                 // Команды RiR недоступны, пока Rhino.Inside не запущен (журнал Revit:
@@ -44,14 +54,14 @@ namespace RIR_PluginManager
                     {
                         uiapp.PostCommand(start);
                         TaskDialog.Show("RIR_PluginManager",
-                            "Плагины применены. Rhino.Inside ещё не был запущен, поэтому сейчас он запустится.\n\n" +
-                            "После загрузки нажмите кнопку Rhino или Grasshopper.");
+                            L.T("Плагины применены. Rhino.Inside ещё не был запущен, поэтому сейчас он запустится.\n\nПосле загрузки нажмите кнопку Rhino или Grasshopper.",
+                                "Plugins applied. Rhino.Inside was not running yet, so it will start now.\n\nWhen it has loaded, click the Rhino or Grasshopper button."));
                     }
                     else
                     {
                         TaskDialog.Show("RIR_PluginManager",
-                            "Плагины применены, но команда Rhino.Inside сейчас недоступна.\n\n" +
-                            "Нажмите Start на вкладке Rhino.Inside, затем Rhino или Grasshopper.");
+                            L.T("Плагины применены, но команда Rhino.Inside сейчас недоступна.\n\nНажмите Start на вкладке Rhino.Inside, затем Rhino или Grasshopper.",
+                                "Plugins applied, but the Rhino.Inside command is not available now.\n\nClick Start on the Rhino.Inside tab, then Rhino or Grasshopper."));
                     }
                     return Result.Succeeded;
                 }
@@ -60,7 +70,7 @@ namespace RIR_PluginManager
             catch (Exception ex)
             {
                 PluginStore.Log("PostCommand error: " + ex.Message);
-                TaskDialog.Show("RIR_PluginManager", "Не удалось запустить команду Rhino.Inside: " + ex.Message);
+                TaskDialog.Show("RIR_PluginManager", L.T("Не удалось запустить команду Rhino.Inside: ", "Could not start the Rhino.Inside command: ") + ex.Message);
             }
             return Result.Succeeded;
         }

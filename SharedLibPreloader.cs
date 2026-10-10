@@ -54,7 +54,7 @@ namespace RIR_PluginManager
                 foreach (var dll in PluginChecker.GroupDlls(g))
                     if (!PluginChecker.IsIncompatibleAssembly(dll)) Add(dll, g.Key, g.Name);   // без папок другого рантайма
             }
-            foreach (var dll in PluginStore.RootLibraryDlls()) Add(dll, "", "Libraries (корень)");
+            foreach (var dll in PluginStore.RootLibraryDlls()) Add(dll, "", L.T("Libraries (корень)", "Libraries (root)"));
 
             var plan = new List<Item>();
             foreach (var kv in copies)
@@ -128,19 +128,19 @@ namespace RIR_PluginManager
             {
                 if (PluginStore.GrasshopperPluginsLoaded())
                 {
-                    PluginStore.Log("Предзагрузка: пропущена, Grasshopper уже загрузил плагины");
+                    PluginStore.Log(L.T("Предзагрузка: пропущена, Grasshopper уже загрузил плагины", "Preload: skipped, Grasshopper has already loaded plugins"));
                     return;
                 }
 
                 var profile = PluginStore.LoadProfile();
                 if (!profile.PreloadShared)
                 {
-                    PluginStore.Log("Предзагрузка общих библиотек выключена в настройках");
+                    PluginStore.Log(L.T("Предзагрузка общих библиотек выключена в настройках", "Preloading of shared libraries is turned off in settings"));
                     return;
                 }
 
                 var plan = Plan(PluginStore.Scan(), profile.Disabled, profile.PreloadExclude, PluginChecker.SnapshotLoaded());
-                PluginStore.Log($"Предзагрузка общих библиотек ({reason}): найдено {plan.Count}");
+                PluginStore.Log(L.T($"Предзагрузка общих библиотек ({reason}): найдено {plan.Count}", $"Preloading shared libraries ({reason}): found {plan.Count}"));
 
                 foreach (var item in plan)
                 {
@@ -153,19 +153,21 @@ namespace RIR_PluginManager
 #else
                         var ctx = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(asm)?.Name ?? "?";
 #endif
-                        PluginStore.Log($"  {item.Name} {item.Version} из {item.OwnerName} загружена заранее " +
-                                        $"(контекст {ctx}); более старые копии: {older}" +
-                                        (item.MajorDiffers ? "; основной номер версии отличается — возможна несовместимость" : ""));
+                        PluginStore.Log(L.T($"  {item.Name} {item.Version} из {item.OwnerName} загружена заранее (контекст {ctx}); более старые копии: {older}",
+                                            $"  {item.Name} {item.Version} from {item.OwnerName} preloaded (context {ctx}); older copies: {older}") +
+                                        (item.MajorDiffers ? L.T("; основной номер версии отличается — возможна несовместимость",
+                                                                 "; the major version differs, incompatibility is possible") : ""));
                     }
                     catch (Exception ex)
                     {
-                        PluginStore.Log($"  {item.Name} {item.Version} из {item.OwnerName}: не удалось загрузить заранее: {ex.Message}");
+                        PluginStore.Log(L.T($"  {item.Name} {item.Version} из {item.OwnerName}: не удалось загрузить заранее: {ex.Message}",
+                                            $"  {item.Name} {item.Version} from {item.OwnerName}: could not preload: {ex.Message}"));
                     }
                 }
             }
             catch (Exception ex)
             {
-                PluginStore.Log("Предзагрузка: ошибка " + ex);
+                PluginStore.Log(L.T("Предзагрузка: ошибка ", "Preload: error ") + ex);
             }
         }
     }

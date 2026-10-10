@@ -133,7 +133,7 @@ namespace RIR_PluginManager
         public static void Arm()
         {
             try { CheckPrevious(); }
-            catch (Exception ex) { PluginStore.Log("Маркер падения: " + ex.Message); }
+            catch (Exception ex) { PluginStore.Log(L.T("Маркер падения: ", "Crash marker: ") + ex.Message); }
             AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
         }
 
@@ -156,9 +156,10 @@ namespace RIR_PluginManager
 
         static CrashReport Analyze(SessionInfo s)
         {
-            var when = $"({s.startedLocal:dd.MM.yyyy HH:mm})";
+            var when = "(" + s.startedLocal.ToString(L.T("dd.MM.yyyy HH:mm", "yyyy-MM-dd HH:mm")) + ")";
             // До отметки «loaded» нельзя точно отличить конец загрузки от открытия окна Grasshopper
-            var phase = s.loaded ? "вскоре после загрузки Grasshopper" : "при загрузке или открытии Grasshopper";
+            var phase = s.loaded ? L.T("вскоре после загрузки Grasshopper", "shortly after Grasshopper loaded")
+                                  : L.T("при загрузке или открытии Grasshopper", "while Grasshopper was loading or opening");
             var report = new CrashReport { Rhino = s.rhino, ProfilePath = s.profile, WhenUtc = s.startUtcSession, AfterLoad = s.loaded };
 
             // 1. Последняя запись — ошибка в коде плагина
@@ -166,8 +167,9 @@ namespace RIR_PluginManager
             {
                 var e = s.lastExc.Value;
                 var group = PluginStore.GroupOfFile(e.path, s.rhino);
-                PluginStore.Log($"Прошлый запуск Revit завершился аварийно {phase} {when}. Последняя запись перед падением — " +
-                                $"ошибка в коде {e.name} ({e.path}): {e.text}" + (group != null ? $" (плагин {group.Value.key})" : " (вне папок плагинов)"));
+                PluginStore.Log(L.T($"Прошлый запуск Revit завершился аварийно {phase} {when}. Последняя запись перед падением — ошибка в коде {e.name} ({e.path}): {e.text}",
+                                    $"The previous Revit session crashed {phase} {when}. The last record before the crash is an error in the code of {e.name} ({e.path}): {e.text}") +
+                                (group != null ? L.T($" (плагин {group.Value.key})", $" (plugin {group.Value.key})") : L.T(" (вне папок плагинов)", " (outside plugin folders)")));
                 if (group != null)
                 {
                     report.Kind = CrashKind.PluginError;
@@ -180,14 +182,16 @@ namespace RIR_PluginManager
             // 2. Упал после загрузки, и последней записью была не ошибка плагина: причиной может быть что угодно
             else if (s.loaded)
             {
-                PluginStore.Log($"Прошлый запуск Revit завершился аварийно после загрузки Grasshopper {when}" +
-                                (s.watchEnded ? "" : $", в первые {WatchAfterLoad.TotalSeconds:0} с") + "; подозреваемого нет. " +
-                                $"Последние загруженные плагины: {string.Join(", ", s.gha.Skip(Math.Max(0, s.gha.Count - 3)).Select(g => Describe(g)))}");
+                var lastLoaded = string.Join(", ", s.gha.Skip(Math.Max(0, s.gha.Count - 3)).Select(g => Describe(g)));
+                PluginStore.Log(L.T($"Прошлый запуск Revit завершился аварийно после загрузки Grasshopper {when}", $"The previous Revit session crashed after Grasshopper loaded {when}") +
+                                (s.watchEnded ? "" : L.T($", в первые {WatchAfterLoad.TotalSeconds:0} с", $", within the first {WatchAfterLoad.TotalSeconds:0} s")) +
+                                L.T($"; подозреваемого нет. Последние загруженные плагины: {lastLoaded}", $"; no suspect. Last loaded plugins: {lastLoaded}"));
                 return null;
             }
             else if (s.gha.Count == 0)
             {
-                PluginStore.Log($"Прошлый запуск Revit завершился аварийно в начале загрузки Grasshopper {when}, до загрузки плагинов");
+                PluginStore.Log(L.T($"Прошлый запуск Revit завершился аварийно в начале загрузки Grasshopper {when}, до загрузки плагинов",
+                                    $"The previous Revit session crashed at the start of Grasshopper loading {when}, before plugins loaded"));
                 return null;
             }
             // 3. Упал во время загрузки — последний загружавшийся плагин
@@ -199,8 +203,9 @@ namespace RIR_PluginManager
                 var group = PluginStore.GroupOfFile(path, s.rhino);
                 report.File = path; report.Assembly = last.name;
                 report.Name = group?.name ?? (string.IsNullOrEmpty(path) ? last.name : Path.GetFileNameWithoutExtension(path));
-                PluginStore.Log($"Прошлый запуск Revit завершился аварийно при загрузке или открытии Grasshopper {when}. " +
-                                $"Последним загружался: {Describe(last)}" + (group != null ? $" (плагин {group.Value.key})" : " (вне папок плагинов)"));
+                PluginStore.Log(L.T($"Прошлый запуск Revit завершился аварийно при загрузке или открытии Grasshopper {when}. Последним загружался: {Describe(last)}",
+                                    $"The previous Revit session crashed while Grasshopper was loading or opening {when}. Last loaded: {Describe(last)}") +
+                                (group != null ? L.T($" (плагин {group.Value.key})", $" (plugin {group.Value.key})") : L.T(" (вне папок плагинов)", " (outside plugin folders)")));
                 if (group != null)
                 {
                     report.Kind = CrashKind.LastLoaded;
@@ -214,10 +219,10 @@ namespace RIR_PluginManager
             report.Kind = CrashKind.Unknown;
             report.Key = null;
             try { report.Candidates = IncompatibleLoaded(s); }
-            catch (Exception ex) { PluginStore.Log("Маркер падения: проверка плагинов не удалась: " + ex.Message); }
+            catch (Exception ex) { PluginStore.Log(L.T("Маркер падения: проверка плагинов не удалась: ", "Crash marker: plugin check failed: ") + ex.Message); }
             PluginStore.Log(report.Candidates.Count > 0
-                ? "Точный виновник не определён. Загружались несовместимые плагины (✖): " + string.Join(", ", report.Candidates.Select(c => c.key))
-                : "Точный виновник не определён; несовместимых плагинов (✖) среди загруженных нет");
+                ? L.T("Точный виновник не определён. Загружались несовместимые плагины (✖): ", "No exact culprit. Incompatible plugins (✖) were loaded: ") + string.Join(", ", report.Candidates.Select(c => c.key))
+                : L.T("Точный виновник не определён; несовместимых плагинов (✖) среди загруженных нет", "No exact culprit; no incompatible plugins (✖) were loaded"));
             return report;
         }
 
@@ -253,7 +258,7 @@ namespace RIR_PluginManager
             path.EndsWith(".gha", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".ghpy", StringComparison.OrdinalIgnoreCase);
 
         static string Describe((string path, string name) g) =>
-            string.IsNullOrEmpty(g.path) ? g.name + " (из памяти)" : g.path;
+            string.IsNullOrEmpty(g.path) ? g.name + L.T(" (из памяти)", " (from memory)") : g.path;
 
         struct SessionInfo
         {
@@ -361,7 +366,7 @@ namespace RIR_PluginManager
                         .GetProperty("DocumentEditor", BindingFlags.Public | BindingFlags.Static);
                     _loadTimer = new System.Threading.Timer(OnLoadTimer, null, 1000, 1000);
                 }
-                catch (Exception ex) { PluginStore.Log("Маркер падения: таймер загрузки не запущен: " + ex.Message); }
+                catch (Exception ex) { PluginStore.Log(L.T("Маркер падения: таймер загрузки не запущен: ", "Crash marker: load timer not started: ") + ex.Message); }
                 try
                 {
                     _rhino = Session.RhinoMajorOrDefault;
@@ -381,9 +386,9 @@ namespace RIR_PluginManager
                         "profile\t" + profile,
                         "started\t" + Now()
                     });
-                    PluginStore.Log("Grasshopper начал загрузку: ведётся журнал загрузки плагинов (маркер падения)");
+                    PluginStore.Log(L.T("Grasshopper начал загрузку: ведётся журнал загрузки плагинов (маркер падения)", "Grasshopper started loading: recording plugin loading (crash marker)"));
                 }
-                catch (Exception ex) { PluginStore.Log("Маркер падения: не удалось начать запись: " + ex.Message); }
+                catch (Exception ex) { PluginStore.Log(L.T("Маркер падения: не удалось начать запись: ", "Crash marker: could not start recording: ") + ex.Message); }
             }
         }
 
@@ -398,7 +403,7 @@ namespace RIR_PluginManager
         /// Grasshopper загрузил плагины. Вызывается по таймеру (окно Grasshopper создано и плагины
         /// больше не загружаются) или из Idling — что наступит раньше. Idling приходит, только когда
         /// пользователь в окне Revit, поэтому без таймера отметка могла запаздывать на минуты.
-        public static void MarkLoaded() => MarkLoaded("простой Revit");
+        public static void MarkLoaded() => MarkLoaded(L.T("простой Revit", "Revit idle"));
 
         static void MarkLoaded(string source)
         {
@@ -412,7 +417,7 @@ namespace RIR_PluginManager
                 // Таймер продолжает работать: через WatchAfterLoad он закончит запись ошибок (watch-end),
                 // даже если пользователь всё это время в окне Grasshopper и Idling не приходит.
             }
-            PluginStore.Log($"Маркер падения: Grasshopper загружен ({source})");
+            PluginStore.Log(L.T($"Маркер падения: Grasshopper загружен ({source})", $"Crash marker: Grasshopper loaded ({source})"));
         }
 
         static void OnLoadTimer(object state)
@@ -427,7 +432,7 @@ namespace RIR_PluginManager
                 }
                 if (DateTime.UtcNow - _lastPluginLoadUtc < QuietAfterLoad) return;
                 if (_ghDocumentEditor == null || _ghDocumentEditor.GetValue(null) == null) return;   // окно ещё не создано
-                MarkLoaded("окно Grasshopper открыто");
+                MarkLoaded(L.T("окно Grasshopper открыто", "Grasshopper window open"));
             }
             catch { }
         }
@@ -457,7 +462,7 @@ namespace RIR_PluginManager
                 Append($"watch-end\t{Now()}");
                 StopLoadTimer();
             }
-            PluginStore.Log($"Маркер падения: наблюдение закончено, записано ошибок в коде плагинов: {_excCount}");
+            PluginStore.Log(L.T($"Маркер падения: наблюдение закончено, записано ошибок в коде плагинов: {_excCount}", $"Crash marker: watch finished, errors recorded in plugin code: {_excCount}"));
         }
 
         // ---------- Ошибки в коде плагинов ----------
@@ -592,11 +597,11 @@ namespace RIR_PluginManager
                         if (suspects.Count != before)
                         {
                             WriteSuspects(suspects);
-                            PluginStore.Log($"Сняты подозрения в падении: {before - suspects.Count} (плагины загрузились без сбоя)");
+                            PluginStore.Log(L.T($"Сняты подозрения в падении: {before - suspects.Count} (плагины загрузились без сбоя)", $"Crash suspicions cleared: {before - suspects.Count} (plugins loaded without a crash)"));
                         }
                     }
                 }
-                catch (Exception ex) { PluginStore.Log("Маркер падения: " + ex.Message); }
+                catch (Exception ex) { PluginStore.Log(L.T("Маркер падения: ", "Crash marker: ") + ex.Message); }
                 TryDelete(SessionPath);
                 _active = false;
                 StopLoadTimer();
@@ -656,7 +661,7 @@ namespace RIR_PluginManager
 
         /// Текст для предупреждения: «WiresRenderer (падение 09.10.2026)».
         public static string List(IEnumerable<Suspect> suspects) =>
-            string.Join(", ", suspects.Select(s => $"{s.Name} (падение {s.WhenUtc.ToLocalTime():dd.MM.yyyy})"));
+            string.Join(", ", suspects.Select(s => L.T($"{s.Name} (падение {s.WhenUtc.ToLocalTime():dd.MM.yyyy})", $"{s.Name} (crash {s.WhenUtc.ToLocalTime():yyyy-MM-dd})")));
 
         /// Сообщение о прошлом падении показано (или обработано).
         public static void ClearPending() => Pending = null;
