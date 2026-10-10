@@ -61,10 +61,6 @@ Revit 2025.5+, 2026.5+ and 2027 run on .NET 10.
 
 Supports Revit 2021–2027, Rhino 7, 8 and 9.
 
-GitHub: https://github.com/GCPDdetYakub/RIR_PluginManager
-
-Feedback and bug reports are very welcome.
-
 ---
 
 ## Русский
@@ -123,5 +119,3 @@ Revit 2025.5+, 2026.5+ и 2027 работают на .NET 10.
 > **Важно:** надстройка не чинит плагины. Её главная задача — предупредить, какие плагины Grasshopper могут привести к вылету Revit, и позволить исключить их из загрузки. Несовместимый с вашей версией Revit плагин так и останется несовместимым, пока его автор не выпустит подходящую версию.
 
 Поддерживаются Revit 2021–2027, Rhino 7, 8 и 9.
-
-GitHub: https://github.com/GCPDdetYakub/RIR_PluginManager
