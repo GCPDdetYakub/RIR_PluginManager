@@ -22,7 +22,7 @@ Rhino.Inside.Revit runs inside the Revit process, which ties Rhino and Grasshopp
 | --- | --- |
 | Rhino 7 | .NET Framework 4.8 |
 | Rhino 8.0 – 8.19 | .NET 7 |
-| Rhino 8.20 - 8.35 | .NET 8 |
+| Rhino 8.20 – 8.35 | .NET 8 |
 | Rhino 8.36+ | .NET 10 |
 | Rhino 9 | .NET 10 |
 
@@ -102,7 +102,7 @@ Rhino.Inside.Revit запускается внутри процесса Revit, �
 | --- | --- |
 | Rhino 7 | .NET Framework 4.8 |
 | Rhino 8.0 – 8.19 | .NET 7 |
-| Rhino 8.20 - 8.35 | .NET 8 |
+| Rhino 8.20 – 8.35 | .NET 8 |
 | Rhino 8.36+ | .NET 10 |
 | Rhino 9 | .NET 10 |
 
