@@ -61,6 +61,27 @@ Revit 2025.5+, 2026.5+ and 2027 run on .NET 10.
 
 Supports Revit 2021–2027, Rhino 7, 8 and 9.
 
+### Installation
+
+1. Close Revit.
+2. On the [Releases](../../releases) page download the archive for your Revit version: `RIR_PluginManager_v<version>_R_<Revit version>.zip` — `R_2021` … `R_2024`, `R_2027`; Revit 2025 and 2026 have two each: `R_2025.0-2025.4` / `R_2025.5+` and `R_2026.0-2026.4` / `R_2026.5+` (the update number is shown in Help → About). Builds for different Revit versions are not interchangeable.
+3. Extract it into `%APPDATA%\Autodesk\Revit\Addins\<Revit version>\` (you can paste this path into the Explorer address bar). The result should look like this:
+
+   ```
+   %APPDATA%\Autodesk\Revit\Addins\2027\
+   ├── RIR_PluginManager.addin
+   └── RIR_PluginManager\
+       ├── RIR_PluginManager.dll
+       └── … other DLLs from the archive
+   ```
+
+4. Start Revit. When asked about an unsigned add-in, choose **Always Load**.
+
+If the add-in does not appear, open the properties of the DLL files and click **Unblock** (Windows marks files downloaded from the internet).
+
+The buttons **Plugin Manager** and **Grasshopper (profile)** appear on the Rhino.Inside tab. The interface follows the Revit language (Russian Revit → Russian, any other → English); you can switch it in the Plugin Manager window (**Язык / Language**). Detailed documentation below is in Russian.
+
+
 ---
 
 ## Русский
@@ -119,3 +140,23 @@ Revit 2025.5+, 2026.5+ и 2027 работают на .NET 10.
 > **Важно:** надстройка не чинит плагины. Её главная задача — предупредить, какие плагины Grasshopper могут привести к вылету Revit, и позволить исключить их из загрузки. Несовместимый с вашей версией Revit плагин так и останется несовместимым, пока его автор не выпустит подходящую версию.
 
 Поддерживаются Revit 2021–2027, Rhino 7, 8 и 9.
+
+## Установка из готового архива
+
+1. Закройте Revit.
+2. На странице [Releases](../../releases) скачайте архив для своей версии Revit: `RIR_PluginManager_v<версия>_R_<версия Revit>.zip` — `R_2021` … `R_2024`, `R_2027`; для Revit 2025 и 2026 их по два: `R_2025.0-2025.4` / `R_2025.5+` и `R_2026.0-2026.4` / `R_2026.5+` (номер обновления видно в «Справка → О программе»). Архив должен совпадать с годом вашего Revit: сборки для разных версий Revit не взаимозаменяемы.
+3. Распакуйте его в папку `%APPDATA%\Autodesk\Revit\Addins\<версия Revit>\` (путь можно вставить в адресную строку Проводника). Должно получиться так:
+
+   ```
+   %APPDATA%\Autodesk\Revit\Addins\2027\
+   ├── RIR_PluginManager.addin
+   └── RIR_PluginManager\
+       ├── RIR_PluginManager.dll
+       └── … остальные DLL из архива
+   ```
+
+   Набор DLL зависит от рантайма: `0Harmony.dll` (.NET 8/10), `System.Formats.Nrbf.dll` (.NET 8), `System.Reflection.Metadata.dll` и `System.Collections.Immutable.dll` (.NET Framework). Копируйте всё содержимое архива.
+
+4. Запустите Revit. На вопрос о неподписанной надстройке ответьте **«Всегда загружать»**.
+
+Если надстройка не появилась, откройте свойства файлов DLL и нажмите **«Разблокировать»** (Windows помечает файлы, скачанные из интернета).
